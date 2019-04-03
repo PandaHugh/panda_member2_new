@@ -4,8 +4,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class Transaction_c extends CI_Controller {
     
     public function __construct()
-    {
-        parent::__construct();
+	{
+		parent::__construct();
         
         $this->load->library(array('session'));
         $this->load->library('session');
@@ -18,7 +18,7 @@ class Transaction_c extends CI_Controller {
         $this->load->model('Trans_Model');
         $this->load->model('Search_Model');
         $this->load->model('Member_Model');
-    }
+	}
 
     public function test()
     {
@@ -87,6 +87,13 @@ class Transaction_c extends CI_Controller {
         }
 
         return $branch;
+    }
+
+    public function insert_sqlscript($data)
+    {
+        $result = $this->Member_Model->query_call('Transaction_c', 'insert_sqlscript', $data);
+
+        return $result;
     }
 
     public function check_parameter()
@@ -1265,7 +1272,6 @@ class Transaction_c extends CI_Controller {
                 'AccountNo' => $AccountNo,
                 'CardNo' => $CardNo,
                 'card_verify' => $this->check_parameter()->row('card_verify'),
-                'Issuedate' => $get_account_data->row('Issuedate'),
             );
             //echo $this->db->last_query();die;
 
@@ -2134,6 +2140,14 @@ class Transaction_c extends CI_Controller {
                     $get_data = $this->db->query("SELECT * FROM `member` WHERE CardNo = '".$cardno."' ");
                 }
 
+                $check_lost_card = $this->db->query("SELECT LostCardNo FROM memberlostcard WHERE LostCardNo = '".$get_data->row('CardNo')."'");
+
+                if($check_lost_card->num_rows() > 0)
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">This Card Already Lost. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/renew');
+                }
+
                 if($get_data->num_rows() == 0)
                 {
                     //for merchant checking only
@@ -2318,10 +2332,11 @@ class Transaction_c extends CI_Controller {
             else// if card need to renew
             {
                 $get_setting = $this->db->query("SELECT expiry_date_type from set_parameter")->row('expiry_date_type');
+                $today = $this->db->query("SELECT CURDATE() AS today ")->row('today');
 
                 if($get_setting == 1)// if setup equal to 1 new expiry date will follow the logic
                 {
-                    $today = $this->db->query("SELECT CURDATE() AS today ")->row('today');
+
                     if($get_account_data->row('Expirydate') > $today)// if expired date more then current date
                     {
                         $get_preset_expiry_date = $get_account_data->row('Expirydate');
@@ -2336,6 +2351,25 @@ class Transaction_c extends CI_Controller {
                 {
                     $get_preset_expiry_date = $get_account_data->row('Expirydate');
                 };
+
+                if($get_setting == 3)// if setup equal to 3 all expiry date round up to n months.
+                {
+                    if($get_account_data->row('Expirydate') > $today && $get_account_data->row('Expirydate') != '3000-12-31')// if expired date more then current date
+                    {
+                        $date = $get_account_data->row('Expirydate');
+                    }
+                    else
+                    {
+                        $date = $today; 
+                    }
+                    $month = date("m", strtotime($date));
+                    $year = date("Y", strtotime($date));
+                    $month_rounder = $this->db->query("SELECT expiry_date_roundup FROM set_parameter")->row('expiry_date_roundup');
+                    $expiry_month = ceil($month/$month_rounder) * $month_rounder;
+                    $expiry_month = str_pad($expiry_month, 2, '0', STR_PAD_LEFT);
+                    $days = cal_days_in_month(CAL_GREGORIAN,$expiry_month,$year);
+                    $get_preset_expiry_date  = $year.'-'.$expiry_month.'-'.$days;
+                }
                 
                 // $branch = $this->db->query("SELECT branch as branch_code, branch as branch_name  FROM ".$_SESSION['update_table']." WHERE AccountNo = '".$_SESSION['account_no']."' ");
                 $branch = $this->db->query("SELECT branch as branch_code, branch as branch_name  FROM member WHERE AccountNo = '".$_SESSION['account_no']."' ")->result_array();
@@ -2516,9 +2550,17 @@ class Transaction_c extends CI_Controller {
 
                                     $check_receipt = $this->Member_Model->query_call('Transaction_c', 'save_renew1', $data);
 
-                                    if($check_receipt['message'] == 'success')
+                                    if($check_receipt['message'] != 'success')
                                     {
-                                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                        if($check_receipt['message'] == 'Unable find itemcode for renew card on this receipt no.Please make payment to proceed this transaction.')
+                                        {
+                                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable find itemcode for renew card on this receipt no.Please make payment to proceed this transaction.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                        }
+                                        else
+                                        {
+                                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                        }
+
                                         redirect('Transaction_c/renew?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
                                     }
                                 }
@@ -2914,6 +2956,14 @@ public function issue_sup_card()
                        redirect('Transaction_c/issue_sup_card');
                 }
 
+                $check_lost_card = $this->db->query("SELECT LostCardNo FROM memberlostcard WHERE LostCardNo = '".$get_data->row('CardNo')."'");
+
+                if($check_lost_card->num_rows() > 0)
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">This Card Already Lost. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/issue_sup_card');
+                }
+
                 if($get_data->num_rows() == 0)
                 {
                     $get_data_supcard = $this->db->query("SELECT * FROM `membersupcard` WHERE SupCardNo = '".$this->input->post('card_no')."' ");
@@ -3196,9 +3246,9 @@ public function issue_sup_card()
                         else
                         {
                             $check_receipt_day = $this->db->query("SELECT check_receipt_day FROM set_parameter ")->row('check_receipt_day');
-                            $get_days = $this->db->query("SELECT TIMESTAMPDIFF(DAY, '".$check_receipt['BizDate']."', CURDATE()) AS day ")->row('day');
+                            $get_days = $this->db->query("SELECT TIMESTAMPDIFF(DAY, '".$check_receipt[0]['BizDate']."', CURDATE()) AS day ")->row('day');
 
-                            if(($check_check_receipt_itemcode == 0 || $check_check_receipt_itemcode == 2) && $check_receipt->row('BillAmt') < $check_receipt_setup)// if setup not check itemcode and bill amount less than tamount setup
+                            if(($check_check_receipt_itemcode == 0 || $check_check_receipt_itemcode == 2) && $check_receipt[0]['BillAmt'] < $check_receipt_setup)// if setup not check itemcode and bill amount less than tamount setup
                             {
                                 $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Receipt Amount Not Enough !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
                                 redirect('Transaction_c/issue_sup_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&Nationality='.$_SESSION['Nationality'].'&name='.$name_sup.'&nameoncard='.$nameonsupcard);
@@ -3225,10 +3275,18 @@ public function issue_sup_card()
 
                                 $check_receipt = $this->Member_Model->query_call('Transaction_c', 'save_renew1', $data);
 
-                                if($check_receipt['message'] == 'success')
+                                if($check_receipt['message'] != 'success')
                                 {
-                                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
-                                    redirect('Transaction_c/renew?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no'));
+                                    if($check_receipt['message'] == 'Unable find itemcode for renew card on this receipt no.Please make payment to proceed this transaction.')
+                                    {
+                                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable find itemcode for activation card on this receipt no.Please make payment to proceed this transaction.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    }
+                                    else
+                                    {
+                                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    }
+
+                                    redirect('Transaction_c/issue_sup_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&Nationality='.$_SESSION['Nationality'].'&name='.$name_sup.'&nameoncard='.$nameonsupcard);
                                 }
                             }
                         }
@@ -3304,10 +3362,10 @@ public function issue_sup_card()
                 $this->db->insert('mem_ii_trans' , $data_trans);
             }
 
-            // if($national != 'MALAYSIAN' && $national != 'MALAYSIA')
-            // {
-            //     $icno = $passno;
-            // }
+            if($national != 'MALAYSIAN' && $national != 'MALAYSIA')
+            {
+                $icno = $passno;
+            }
             
             $data = array(
                 'PrincipalCardNo' => 'SUPCARD',
@@ -3331,7 +3389,6 @@ public function issue_sup_card()
                 'Birthdate' => addslashes($birthdate),
                 'Gender' => $Gender,
                 'email' => addslashes($this->input->post('email')),
-                'NewForScript' => '1',
             );
             $this->db->insert('membersupcard', $data);
 
@@ -3435,14 +3492,15 @@ public function issue_sup_card()
 
                 //mem_server to update all branch
                 $server = array(
-                    'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()), '-', '') AS uuid ")->row('uuid'),
+                    // 'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()), '-', '') AS uuid ")->row('uuid'),
                     'SqlScript' => "DELETE FROM member WHERE CardNo = '".$this->input->post('card_no')."' AND AccountNo = '".$get_rep_card->row('AccountNo')."' ",
-                    'CreatedDateTime' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                    // 'CreatedDateTime' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
                     'CreatedBy' => 'Point.cal:web_member',
-                    'Status' => '0',
-                    'KeyField' => '',
+                    // 'Status' => '0',
+                    // 'KeyField' => '',
                 );
-                $this->db->insert('mem_server.sqlscript', $server);
+                // $this->db->insert('mem_server.sqlscript', $server);
+                $this->insert_sqlscript($server);
             }
 
             $data = array(
@@ -3522,6 +3580,14 @@ public function issue_sup_card()
                 {
                     if($get_data->num_rows() == 1)
                     {
+                        $check_lost_card = $this->db->query("SELECT LostCardNo FROM memberlostcard WHERE LostCardNo = '".$get_data->row('CardNo')."'");
+
+                        if($check_lost_card->num_rows() > 0)
+                        {
+                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">This Card Already Lost. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            redirect('Transaction_c/lost_card');
+                        }
+
                         $check_active_card = $this->db->query("SELECT * FROM member WHERE Issuedate < Expirydate AND Active = 1 AND CardNo = '".$get_data->row('CardNo')."' 
                         UNION ALL
                         SELECT a.* FROM member a 
@@ -3551,6 +3617,8 @@ public function issue_sup_card()
                 $style = 'display: block;';
                 $result = 'hidden';
                 $record = $get_data;
+                $form = 'Transaction_c/save_sup_card_lost';
+                $form1 = 'Transaction_c/lost_card';
 
             }
             elseif(isset($_REQUEST['exist_card']))
@@ -3565,6 +3633,8 @@ public function issue_sup_card()
                 $_SESSION['ic_no'] = $_REQUEST['ic_no'];
                 $_SESSION['hidden_result'] = '';
                 $style = 'display: block;';
+                $form = 'Transaction_c/save_sup_card_lost';
+                $form1 = 'Transaction_c/lost_card';
                 $record = '';
             }
             else
@@ -3579,6 +3649,8 @@ public function issue_sup_card()
                 $_SESSION['ic_no'] = '';
                 $_SESSION['hidden_result'] = 'hidden';
                 $style = 'display: none;';
+                $form = 'Transaction_c/save_sup_card_lost';
+                $form1 = 'Transaction_c/lost_card';
                 if(isset($_REQUEST['multiple']))
                 {
                     $record = $this->Search_Model->search_card($_REQUEST['multiple']);    
@@ -3607,10 +3679,159 @@ public function issue_sup_card()
                 /*'need_receipt_no' => $this->db->query("SELECT receipt_no_lostcard FROM `set_parameter`;")->row('receipt_no_lostcard'),*/
                 /*'branch' => $this->db->query("SELECT DISTINCT branch_code, branch_name FROM panda_b2b.set_user AS a INNER JOIN panda_b2b.acc_branch AS b ON a.branch_guid = b.branch_guid WHERE user_id = '".$_SESSION['username']."' AND user_password = '".$_SESSION['userpass']."' AND a.isactive = '1' AND module_group_guid = '".$_SESSION['module_group_guid']."' ORDER BY branch_code ASC"),*/
                 // 'branch' => $this->db->query("SELECT DISTINCT b.branch_code, b.branch_name, c.receipt_lost FROM panda_b2b.set_user AS a INNER JOIN panda_b2b.acc_branch AS b ON a.branch_guid = b.branch_guid INNER JOIN set_branch_parameter c ON b.branch_guid = c.branch_guid WHERE user_id = '".$_SESSION['username']."' AND user_password = '".$_SESSION['userpass']."' AND a.isactive = '1' AND module_group_guid = '".$_SESSION['module_group_guid']."' ORDER BY b.branch_code ASC"),
+                'button' => 'Lost Card',
                 'branch' => $this->branch_with_receipt(),
                 'field' => 'receipt_lost',
                 'reason' => $this->db->query("SELECT * FROM set_reason where type = 'LOST' "),
                 'style' => $style,
+                'form' => $form,
+                'form1' => $form1,
+                'record' => $record,
+                'preisse_method' => $this->check_parameter()->row('preissue_card_method'),
+                'get_created' => $this->db->query("SELECT * FROM membersupcard a WHERE a.SupCardNo = '$cardno' "),
+
+            );
+
+            $this->template->load('template' , 'lost_card', $data);
+        }
+        else
+        {
+            redirect('login_c');
+        }
+    }
+
+    public function replace_card()
+    {
+        if($this->session->userdata('loginuser')== true)
+        {
+            if(isset($_REQUEST['scan_card']))
+            {
+                // $get_data = $this->db->query("SELECT * FROM `member` WHERE CardNo = '".$this->input->post('card_no')."' ");
+                if(isset($_REQUEST['select']))
+                {
+                    $key = $_REQUEST['select'];
+                }
+                else
+                {
+                    $key = $this->input->post('card_no');
+                }
+
+                $get_data = $this->Search_Model->search_card($key);
+                if($get_data->num_rows() == 0)
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Card Not Found!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/replace_card');
+                }
+                else
+                {
+                    if($get_data->num_rows() == 1)
+                    {
+                        $check_lost_card = $this->db->query("SELECT LostCardNo FROM memberlostcard WHERE LostCardNo = '".$get_data->row('CardNo')."'");
+
+                        if($check_lost_card->num_rows() > 0)
+                        {
+                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">This Card Already Lost. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            redirect('Transaction_c/replace_card');
+                        }
+
+                        $check_active_card = $this->db->query("SELECT * FROM member WHERE Issuedate < Expirydate AND Active = 1 AND CardNo = '".$get_data->row('CardNo')."' 
+                        UNION ALL
+                        SELECT a.* FROM member a 
+                        INNER JOIN membersupcard b ON a.accountno = b.accountno WHERE b.Active = 1 AND supcardno = '".$get_data->row('CardNo')."' ");
+                        //echo $this->db->last_query();die;
+                        if($check_active_card->num_rows() == 0)
+                        {
+                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">This Card does not active. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            redirect('Transaction_c/replace_card');
+                        }
+
+                        $check_preactive_card = $this->db->query("SELECT AccountNo FROM member WHERE NAME = 'PREACTIVATED' AND Expirydate = '3000-12-31' AND CardNo = '".$key."'");
+                        if($check_preactive_card->num_rows() == 1 && $this->check_parameter()->row('preissue_card_method') == 1)
+                        {
+                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$this->input->post('card_no').' is preactive card. Please active card.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            redirect('Transaction_c/replace_card');
+                        }
+
+                        redirect('Transaction_c/replace_card?exist_card='.$get_data->row('CardNo').'&account='.$get_data->row('AccountNo').'&ic_no='.$get_data->row('ICNo').'&active='.$get_data->row('Active').'&mobile_no='.$get_data->row('Phonemobile').'&Name='.$get_data->row('Name').'&Passport_No='.$get_data->row('PassportNo').'&Nationality='.$get_data->row('Nationality').'&Expirydate='.$get_data->row('Expirydate'));
+                    }
+                    else
+                    {
+                        redirect('Transaction_c/replace_card?multiple='.$key);
+                    }
+                   
+                }
+                $style = 'display: block;';
+                $result = 'hidden';
+                $record = $get_data;
+                $form = 'Transaction_c/save_replace_card';
+                $form1 = 'Transaction_c/replace_card';
+
+            }
+            elseif(isset($_REQUEST['exist_card']))
+            {
+                $_SESSION['Nationality'] = $_REQUEST['Nationality'];
+                $_SESSION['Name'] = $_REQUEST['Name'];
+                $_SESSION['Passport_No'] = $_REQUEST['Passport_No'];
+                $_SESSION['mobile_no'] = $_REQUEST['mobile_no'];
+                $_SESSION['active'] = $_REQUEST['active'];
+                $_SESSION['card_no'] = $_REQUEST['exist_card'];
+                $_SESSION['account_no'] = $_REQUEST['account'];
+                $_SESSION['ic_no'] = $_REQUEST['ic_no'];
+                $_SESSION['Expirydate'] = $_REQUEST['Expirydate'];
+                $_SESSION['hidden_result'] = '';
+                $style = 'display: block;';
+                $record = '';
+                $form = 'Transaction_c/save_replace_card';
+                $form1 = 'Transaction_c/replace_card';
+            }
+            else
+            {   
+                $_SESSION['Nationality'] = '';
+                $_SESSION['Name'] = '';
+                $_SESSION['Passport_No'] = '';   
+                $_SESSION['mobile_no'] = '';
+                $_SESSION['active'] = '';
+                $_SESSION['card_no'] = '';
+                $_SESSION['account_no'] = '';
+                $_SESSION['ic_no'] = '';
+                $_SESSION['Expirydate'] = '';
+                $_SESSION['hidden_result'] = 'hidden';
+                $style = 'display: none;';
+                $form = 'Transaction_c/save_replace_card';
+                $form1 = 'Transaction_c/replace_card';
+                if(isset($_REQUEST['multiple']))
+                {
+                    $record = $this->Search_Model->search_card($_REQUEST['multiple']);    
+                }
+                else
+                {
+                    $record = '';
+                }
+                
+            }
+
+        if(isset($_REQUEST['created']))
+           {
+                $cardno = $_REQUEST['created'];
+           }
+           else
+           {
+                $cardno = '';
+           }
+
+            $get_account_data = $this->db->query("SELECT * FROM member WHERE AccountNo = '".$_SESSION['account_no']."' ");
+            $get_preset_expiry_date = $this->db->query("SELECT CURDATE()+INTERVAL (SELECT expiry_date_in_year FROM set_parameter) YEAR AS Expirydate")->row('Expirydate');
+            //echo var_dump($record);die;
+
+            $data = array(
+
+                'button' => 'Replace Card',
+                'branch' => $this->branch_with_receipt(),
+                'field' => 'receipt_replace',
+                'reason' => $this->db->query("SELECT * FROM set_reason where type = 'REPLACE' "),
+                'style' => $style,
+                'form' => $form,
+                'form1' => $form1,
                 'record' => $record,
                 'preisse_method' => $this->check_parameter()->row('preissue_card_method'),
                 'get_created' => $this->db->query("SELECT * FROM membersupcard a WHERE a.SupCardNo = '$cardno' "),
@@ -3727,12 +3948,14 @@ public function issue_sup_card()
                         );
 
                         $result = $this->Member_Model->query_call('Transaction_c', 'save_renew', $data);
+                        $check_receipt = $result['check_receipt'];
 
                         // $check_exist_receipt = $this->db->query("SELECT * FROM frontend.posmain WHERE RefNo = '".$this->input->post('receipt_no')."'");
 
-                        if($check_exist_receipt->num_rows() == 0)//if not found
+                        // if($check_exist_receipt->num_rows() == 0)//if not found
+                        if($result['message'] != 'success')
                         {
-                            $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Receipt Not Found !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">'.$result['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
                              redirect('Transaction_c/lost_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality']);
                         }
                         // elseif($check_receipt_void->num_rows() == 1)//if receipt void
@@ -3747,9 +3970,9 @@ public function issue_sup_card()
                         else
                         {
                             $check_receipt_day = $this->db->query("SELECT check_receipt_day FROM set_parameter ")->row('check_receipt_day');
-                            $get_days = $this->db->query("SELECT TIMESTAMPDIFF(DAY, '".$check_receipt->row('BizDate')."', CURDATE()) AS day ")->row('day');
+                            $get_days = $this->db->query("SELECT TIMESTAMPDIFF(DAY, '".$check_receipt[0]['BizDate']."', CURDATE()) AS day ")->row('day');
 
-                            if(($check_check_receipt_itemcode == 0 || $check_check_receipt_itemcode == 2) && $check_receipt->row('BillAmt') < $check_receipt_setup)// if setup not check itemcode and bill amount less than tamount setup
+                            if(($check_check_receipt_itemcode == 0 || $check_check_receipt_itemcode == 2) && $check_receipt[0]['BillAmt'] < $check_receipt_setup)// if setup not check itemcode and bill amount less than tamount setup
                             {
                                 ini_set('memory_limit', '-1');
                                 ini_set('max_execution_time', 0); 
@@ -3781,10 +4004,18 @@ public function issue_sup_card()
 
                                 $check_receipt = $this->Member_Model->query_call('Transaction_c', 'save_renew1', $data);
 
-                                if($check_receipt['message'] == 'success')
+                                if($check_receipt['message'] != 'success')
                                 {
-                                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
-                                    redirect('Transaction_c/renew?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no'));
+                                    if($check_receipt['message'] == 'Unable find itemcode for renew card on this receipt no.Please make payment to proceed this transaction.')
+                                    {
+                                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable find itemcode for replacement card on this receipt no.Please make payment to proceed this transaction.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    }
+                                    else
+                                    {
+                                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    }
+
+                                    redirect('Transaction_c/lost_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality']);
                                 }
                             }
                         }
@@ -3817,12 +4048,12 @@ public function issue_sup_card()
             $get_account_data = $this->db->query("
                     SELECT Title, ICNo, Name, NameOnCard, Expirydate, CardNo,
                     Active, OldICNo, Birthdate, Principal, Nationality, Gender, Email, Remarks, Expirydate, 
-                    'LOSTCARD' AS card, register_online, register_date, CardNo AS OldCardNo FROM member WHERE AccountNo = '".$accountno."' AND CardNo = '".$_SESSION['card_no']."'
+                    'LOSTCARD' AS card, register_online, register_date, CardNo AS OldCardNo, '' AS Relationship, PhoneMobile FROM member WHERE AccountNo = '".$accountno."' AND CardNo = '".$_SESSION['card_no']."'
                     UNION ALL
                     SELECT b.Title, b.ICNo, b.Name, b.NameOnCard, b.Expirydate, b.SupcardNo AS CardNo,
                     b.Active, b.OldICNo, b.Birthdate, b.Principal, b.Nationality, b.Gender, 
                     b.Email, b.Remarks, b.Expirydate,
-                    IF(b.PrincipalCardNo = 'LOSTCARD','LOSTCARD', 'LOSTSUPCARD') AS card, b.register_online, b.register_date, IF(b.OldCardNo IS NULL OR b.OldCardNo = '', b.SupcardNo, b.OldCardNo) AS OldCardNo FROM member AS a
+                    IF(b.PrincipalCardNo = 'LOSTCARD','LOSTCARD', 'LOSTSUPCARD') AS card, b.register_online, b.register_date, IF(b.OldCardNo IS NULL OR b.OldCardNo = '', b.SupcardNo, b.OldCardNo) AS OldCardNo, b.Relationship, b.PhoneMobile FROM member AS a
                     INNER JOIN membersupcard AS b ON a.AccountNo = b.AccountNo
                     WHERE b.AccountNo = '".$accountno."' AND b.SupCardNo = '".$_SESSION['card_no']."'
                 ");
@@ -3855,10 +4086,10 @@ public function issue_sup_card()
                     'Phonemobile' => addslashes($this->input->post('mobile_no')),
                     'Issuedate' => $this->date(),
                     'Expirydate' => addslashes($this->input->post('expiry_date')),
-                    'ICNo' => $icno,
+                    'ICNo' => addslashes($this->input->post('ic_no')),
                     'Active' => '1',
                     'Remarks' => addslashes($this->input->post('remarks')),
-                    'Gender' => $Gender,
+                    'Gender' => $get_account_data->row('Gender'),
                     
                     'IssueStamp' => $this->datetime(),
                     'UPDATED_BY' => $_SESSION['username'],
@@ -3883,7 +4114,7 @@ public function issue_sup_card()
                 'NameOnCard' => $get_account_data->row('NameOnCard'),
                 'Expirydate' => $get_account_data->row('Expirydate'),
                 'Remarks' => addslashes($this->input->post('remarks')),
-                'Phonemobile' => str_replace(' ', '', addslashes($this->input->post('mobile_no'))),
+                'Phonemobile' => str_replace(' ', '', addslashes('+'.$this->input->post('mobile_no'))),
                 'Active' => $get_account_data->row('Active'),
                 'OldICNo' => $get_account_data->row('OldICNo'),
                 'Birthdate' => $get_account_data->row('Birthdate'),
@@ -3895,7 +4126,6 @@ public function issue_sup_card()
                 "register_online" => $get_account_data->row('register_online'),
                 "register_date" => $get_account_data->row('register_date'),
                 "OldCardNo" => $get_account_data->row('OldCardNo'),
-                "PassportNo" => $get_account_data->row('PassportNo'),
                 // 'branch' => $get_account_data->row('branch'),
                 'IssueStamp' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
                 'LastStamp' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
@@ -3904,6 +4134,26 @@ public function issue_sup_card()
                 'NewForScript' => 1,
             );
             $this->db->insert('membersupcard', $data);
+
+            $data = array(
+                "AccountNo" => $accountno,
+                "LostCardNo" => $get_account_data->row('CardNo'),
+                "Name" => $get_account_data->row('Name'),
+                "NameOnCard" => $get_account_data->row('NameOnCard'),
+                "Title" => $get_account_data->row('Title'),
+                "ICNo" => $get_account_data->row('ICNo'),
+                "OldICNo" => $get_account_data->row('OldICNo'),
+                "Nationality" => $get_account_data->row('Nationality'),
+                "Relationship" => $get_account_data->row('Relationship'),
+                "Birthdate" => $get_account_data->row('Birthdate'),
+                "Gender" => $get_account_data->row('Gender'),
+                "Principal" => $get_account_data->row('Principal'),
+                "PhoneMobile" => $get_account_data->row('PhoneMobile'),
+                "SubstituteCardNo" => $SupCardNo,
+                "CreateDate" => $this->db->query("SELECT CURDATE() AS cur_date")->row('cur_date'),
+                "CreateTime" => $this->db->query("SELECT CURTIME() AS cur_time")->row('cur_time'),
+            );
+            $this->db->insert('memberlostcard', $data);
             
             $this->db->query("UPDATE membersupcard SET rec_new = '1', rec_edit = '0' WHERE AccountNo = '$accountno' AND SupCardNo = '".addslashes($this->input->post('card_no'))."'");
 
@@ -4036,14 +4286,15 @@ public function issue_sup_card()
 
                 //mem_server
                 $server = array(
-                    'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()), '-', '') AS uuid ")->row('uuid'),
+                    // 'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()), '-', '') AS uuid ")->row('uuid'),
                     'SqlScript' => "DELETE FROM member WHERE CardNo = '".$this->input->post('card_no')."' AND AccountNo = '".$get_rep_card->row('AccountNo')."' ",
-                    'CreatedDateTime' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                    // 'CreatedDateTime' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
                     'CreatedBy' => 'Point.cal:web_member',
-                    'Status' => '0',
-                    'KeyField' => '',
+                    // 'Status' => '0',
+                    // 'KeyField' => '',
                 );
-                $this->db->insert('mem_server.sqlscript', $server);
+                // $this->db->insert('mem_server.sqlscript', $server);
+                $this->insert_sqlscript($server);
             }
             if($this->db->affected_rows() > 0)
             {
@@ -4063,6 +4314,473 @@ public function issue_sup_card()
             {
                 $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Failed ! !<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
                 redirect('Transaction_c/lost_card');
+            }
+    }
+
+    public function save_replace_card()
+    {
+            $accountno = $this->input->post('accountno');
+
+            if($accountno == '')
+            {
+                $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable to save as session expired, please login again! <button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+            };
+
+            /*check if card no is new and pre issue method is active then prompt error*/
+            $check_valid = $this->db->query("SELECT Active FROM member WHERE NAME = 'NEW' AND CardNo = '".$this->input->post('card_no')."' ");
+            if($check_valid->num_rows() == 0 && $this->check_parameter()->row('preissue_card_method') == 1)
+            {
+                ini_set('memory_limit', '-1');
+                ini_set('max_execution_time', 0); 
+                ini_set('memory_limit','2048M');
+
+                $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$this->input->post('card_no').' has been used.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+            };
+
+            $check_card_no = $this->db->query("SELECT * FROM member a INNER JOIN membersupcard b ON a.`AccountNo` = b.`AccountNo` WHERE b.`SupCardNo` = '".$this->input->post('card_no')."'");
+            // check valid card no to allow supcard/lost card process
+
+            if($check_card_no->num_rows() > 0)
+            {
+                ini_set('memory_limit', '-1');
+                ini_set('max_execution_time', 0); 
+                ini_set('memory_limit','2048M');
+
+                $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Card No already exist!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+            };
+
+            /*$need_receipt_no = $this->db->query("SELECT receipt_no_lostcard FROM `set_parameter`;")->row('receipt_no_lostcard');*/
+            $need_receipt_no = $this->db->query("SELECT receipt_replace FROM set_branch_parameter WHERE branch_code = '".$this->input->post('branch')."' ")->row('receipt_replace');
+                if($need_receipt_no == 1)
+                {
+                    if($this->input->post('receipt_no') == '')
+                    {
+                        ini_set('memory_limit', '-1');
+                        ini_set('max_execution_time', 0); 
+                        ini_set('memory_limit','2048M');
+
+                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Please fill in receipt no.!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                        redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+                    };
+
+                    if(!in_array('BPRN', $_SESSION['module_code']))
+                    {
+                        $_SESSION['receipt_no'] = $this->input->post('receipt_no');
+
+                        $check_check_receipt_itemcode = $this->db->query("SELECT a.`check_receipt_itemcode` FROM set_parameter a;")->row('check_receipt_itemcode');
+
+                        //$check_receipt_setup = $this->db->query("SELECT receipt_no_amount_lostcard FROM `set_parameter`;")->row('receipt_no_amount_lostcard');
+
+                        if($check_check_receipt_itemcode == 0) //check amount (all outlets)
+                        {
+                            $check_receipt_setup = $this->db->query("SELECT receipt_no_amount_replace FROM `set_parameter` ")->row('receipt_no_amount_replace');
+                        }
+                        elseif($check_check_receipt_itemcode == 2) //check amount (based outlets)
+                        {
+                            $check_receipt_setup = $this->db->query("SELECT amount_replace FROM set_branch_parameter WHERE branch_code = '".$this->input->post('branch')."' ")->row('amount_replace');
+                        }
+                        else
+                        {
+                            $check_receipt_setup = '0';
+                        }
+
+                        //$check_receipt = $this->db->query("SELECT a.`BillAmt`,b.* FROM frontend.posmain a INNER JOIN frontend.poschild b ON a.RefNo = b.Refno WHERE a.VoidFromRefNo = '' AND a.SalesType = 'SALES' AND a.BillStatus = '1' AND b.Refno = '".$this->input->post('receipt_no')."' ");
+                        
+                        // if($this->check_parameter()->row('check_receipt_itemcode') == 1)
+                        // {
+                        //     $check_receipt = $this->Trans_Model->check_receipt_no_child($this->input->post('receipt_no'));
+                        //     $check_receipt_void = $this->Trans_Model->check_receipt_void_no_child($this->input->post('receipt_no'));
+                        // }
+                        // else
+                        // {
+                        //     $check_receipt = $this->Trans_Model->check_receipt_no_main($this->input->post('receipt_no'));
+                        //     $check_receipt_void = $this->Trans_Model->check_receipt_void_no_main($this->input->post('receipt_no'));
+                        // }
+
+                        $check_itemcode = $this->db->query("SELECT * FROM set_itemcode WHERE name = 'replacecard' ");
+
+                        $data = array(
+                            'refno' => $this->input->post('receipt_no'),
+                        );
+
+                        $result = $this->Member_Model->query_call('Transaction_c', 'save_renew', $data);
+                        $check_receipt = $result['check_receipt'];
+
+                        // $check_exist_receipt = $this->db->query("SELECT * FROM frontend.posmain WHERE RefNo = '".$this->input->post('receipt_no')."'");
+
+                        if($result['message'] != 'success')
+                        {
+                            $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">'.$result['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                             redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+                        }
+                        // elseif($check_receipt_void->num_rows() == 1)//if receipt void
+                        // {
+                        //     ini_set('memory_limit', '-1');
+                        //     ini_set('max_execution_time', 0); 
+                        //     ini_set('memory_limit','2048M');
+
+                        //     $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Receipt Already Voided !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                        //     redirect('Transaction_c/lost_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality']);
+                        // }
+                        else
+                        {
+                            $check_receipt_day = $this->db->query("SELECT check_receipt_day FROM set_parameter ")->row('check_receipt_day');
+                            $get_days = $this->db->query("SELECT TIMESTAMPDIFF(DAY, '".$check_receipt[0]['BizDate']."', CURDATE()) AS day ")->row('day');
+
+                            if(($check_check_receipt_itemcode == 0 || $check_check_receipt_itemcode == 2) && $check_receipt[0]['BillAmt'] < $check_receipt_setup)// if setup not check itemcode and bill amount less than tamount setup
+                            {
+                                ini_set('memory_limit', '-1');
+                                ini_set('max_execution_time', 0); 
+                                ini_set('memory_limit','2048M');
+
+                                $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Receipt Amount Not Enough !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+                            }
+                            /*elseif($check_receipt->row('BizDate') <> $this->db->query("SELECT CURDATE() AS curr_date")->row('curr_date'))*/
+                            elseif($get_days > $check_receipt_day)
+                                {
+                                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Invalid receipt date. !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                     redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+                                }
+                            elseif($check_check_receipt_itemcode == 1)
+                            {
+                                // $check_receipt = $this->db->query("SELECT b.* FROM frontend.posmain a INNER JOIN frontend.poschild b ON a.RefNo = b.Refno WHERE a.VoidFromRefNo = '' AND a.SalesType = 'SALES' AND a.BillStatus = '1' AND b.Refno = '".$this->input->post('receipt_no')."' AND b.itemcode = '".$check_itemcode->row('itemcode')."' ");
+
+                                // if($check_receipt->num_rows() == 0)//if not found
+                                // {
+                                //     $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable find itemcode for replacement card on this receipt no.Please make payment to proceed this transaction.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                //     redirect('Transaction_c/lost_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality']);
+                                // }
+
+                                $data = array(
+                                        'refno' => $this->input->post('receipt_no'),
+                                        'itemcode' => $check_itemcode->row('itemcode'),
+                                    );
+
+                                $check_receipt = $this->Member_Model->query_call('Transaction_c', 'save_renew1', $data);
+
+                                if($check_receipt['message'] != 'success')
+                                {
+                                    if($check_receipt['message'] == 'Unable find itemcode for renew card on this receipt no.Please make payment to proceed this transaction.')
+                                    {
+                                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable find itemcode for replacement card on this receipt no.Please make payment to proceed this transaction.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    }
+                                    else
+                                    {
+                                        $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    }
+
+                                    redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+                                }
+                            }
+                        }
+
+                        $receipt_no = $_SESSION['receipt_no'];
+                        if($this->check_exist_receipt_no($receipt_no)->num_rows() > 0)
+                        {
+                            $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Receipt No Already Exist In Record !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+                        };
+                    }
+                    else
+                    {
+                        if($this->input->post('receipt_no') != '-')
+                        {
+                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Please use "-" for bypass receipt no.!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&Expirydate='.$_SESSION['Expirydate']);
+                        };
+
+                        $_SESSION['receipt_no'] = $this->input->post('receipt_no');
+                    }
+                    
+                }
+                else
+                {
+                    $_SESSION['receipt_no'] = "";
+                }
+
+            // $get_new_expiry_date = $this->db->query("SELECT '".$this->input->post('expiry_date')."'+INTERVAL '".$this->input->post('years')."' YEAR AS Expirydate")->row('Expirydate');
+            $get_account_data = $this->db->query("
+                    SELECT Title, ICNo, Name, NameOnCard, Expirydate, CardNo,
+                    Active, OldICNo, Birthdate, Principal, Nationality, Gender, Email, Remarks, Expirydate, 
+                    'REPLACECARD' AS card, register_online, register_date, CardNo AS OldCardNo FROM member WHERE AccountNo = '".$accountno."' AND CardNo = '".$_SESSION['card_no']."'
+                    UNION ALL
+                    SELECT b.Title, b.ICNo, b.Name, b.NameOnCard, b.Expirydate, b.SupcardNo AS CardNo,
+                    b.Active, b.OldICNo, b.Birthdate, b.Principal, b.Nationality, b.Gender, 
+                    b.Email, b.Remarks, b.Expirydate,
+                    IF(b.PrincipalCardNo = 'REPLACECARD' OR 'LOSTCARD' OR 'UPGRADECARD' OR 'APPMAIN','REPLACECARD', 'REPLACESUPCARD') AS card, b.register_online, b.register_date, IF(b.OldCardNo IS NULL OR b.OldCardNo = '', b.SupcardNo, b.OldCardNo) AS OldCardNo FROM member AS a
+                    INNER JOIN membersupcard AS b ON a.AccountNo = b.AccountNo
+                    WHERE b.AccountNo = '".$accountno."' AND b.SupCardNo = '".$_SESSION['card_no']."'
+                ");
+
+            // if not use preisse card no, system auto create ne card no
+            if($this->check_parameter()->row('preissue_card_method') == '0')
+            {
+                $account_no = $this->Trans_Model->generate_card_no($this->input->post('branch'));
+                $SupCardNo = $account_no;
+            }
+            else
+            {
+                $SupCardNo = addslashes($this->input->post('card_no'));
+            }
+
+            if($get_account_data->row('card') == 'REPLACECARD')
+            {
+                $trans_type = 'REPLACE MAIN';
+            }
+            else
+            {
+                $trans_type = 'REPLACE SUP';
+            }
+            
+            // if not use preisse card no, system auto create ne card no
+            if($this->check_parameter()->row('preissue_card_method') == '0')
+            {
+                $data_trans = array(
+
+                    'TRANS_GUID' => $this->guid(),
+                    'TRANS_TYPE' => $trans_type,
+                    'REF_NO' => addslashes($this->input->post('receipt_no')),
+                    'AccountNo' => $accountno,
+                    'CardNo' => $_SESSION['card_no'],
+                    'CardNoNew' => $account_no,
+                    'Name' => addslashes($this->input->post('Name')),
+                    'NameOnCard' => addslashes($this->input->post('NameOnCard')),
+                   
+                    'Phonemobile' => addslashes($this->input->post('mobile_no')),
+                    'Issuedate' => $this->date(),
+                    'Expirydate' => addslashes($this->input->post('expirydate')),
+                    'ICNo' => addslashes($this->input->post('ic_no')),
+                    'Active' => '1',
+                    'Remarks' => addslashes($this->input->post('remarks')),
+                    'Gender' => $get_account_data->row('Gender'),
+                    
+                    'IssueStamp' => $this->datetime(),
+                    'UPDATED_BY' => $_SESSION['username'],
+                    'UPDATED_AT' => $this->datetime(),
+                    'LastStamp' => $this->datetime(),
+                    'created_at' => $this->datetime(),
+                    'created_by' => $_SESSION['username'],
+                    'NewForScript' => '1',
+                   
+                    'branch' => $this->input->post('branch'),
+                );
+                $this->db->insert('mem_ii_trans' , $data_trans);
+            }
+
+            $data = array(
+                'PrincipalCardNo' => $get_account_data->row('card'),
+                'AccountNo' => $accountno,
+                'Title' => $get_account_data->row('Title'),
+                'ICNo' => addslashes($this->input->post('ic_no')),
+                'SupCardNo' => $SupCardNo,
+                'Name' => $get_account_data->row('Name'),
+                'NameOnCard' => $get_account_data->row('NameOnCard'),
+                'Expirydate' => $get_account_data->row('Expirydate'),
+                'Remarks' => addslashes($this->input->post('remarks')),
+                'Phonemobile' => str_replace(' ', '', addslashes('+'.$this->input->post('mobile_no'))),
+                'Active' => $get_account_data->row('Active'),
+                'OldICNo' => $get_account_data->row('OldICNo'),
+                'Birthdate' => $get_account_data->row('Birthdate'),
+                'Principal' => $get_account_data->row('Principal'),
+                'Nationality' => $this->db->query("SELECT LEFT('".$get_account_data->row('Nationality')."', 9) AS nation")->row('nation'),
+                'Gender' => $get_account_data->row('Gender'),
+                'email' => $get_account_data->row('Email'),
+                'Remarks' => $get_account_data->row('Remarks'),
+                "register_online" => $get_account_data->row('register_online'),
+                "register_date" => $get_account_data->row('register_date'),
+                "OldCardNo" => $get_account_data->row('OldCardNo'),
+                // 'branch' => $get_account_data->row('branch'),
+                'IssueStamp' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                'LastStamp' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                'UPDATED_BY' => $_SESSION['username'],
+                'CREATED_BY' => $_SESSION['username'],
+                'NewForScript' => 1,
+            );
+            $this->db->insert('membersupcard', $data);
+            
+            $this->db->query("UPDATE membersupcard SET rec_new = '1', rec_edit = '0' WHERE AccountNo = '$accountno' AND SupCardNo = '".addslashes($this->input->post('card_no'))."'");
+
+            if($get_account_data->row('card') == 'REPLACESUPCARD')
+            {
+                $replace_type = "REPLACE SUPCARD";
+            }
+            else
+            {
+                $replace_type = "REPLACE CARD";
+            }
+
+            $data1 = array(
+                'AccountNo' => $accountno,
+                'LostcardNo' => $_SESSION['card_no'],
+                'Name' => $get_account_data->row('Name'),
+                'NameOnCard' => $get_account_data->row('NameOnCard'),
+                'Title' => $get_account_data->row('Title'),
+                'ICNo' => addslashes($this->input->post('ic_no')),
+                'OldICNo' => $get_account_data->row('OldICNo'),
+                'Nationality' => $this->db->query("SELECT LEFT('".$get_account_data->row('Nationality')."', 9) AS nation")->row('nation'),
+                'Birthdate' => $get_account_data->row('Birthdate'),
+                'Gender' => $get_account_data->row('Gender'),
+                'Principal' => $get_account_data->row('Principal'),
+                'Phonemobile' => str_replace(' ', '', addslashes('+'.$this->input->post('mobile_no'))),
+                'SubstituteCardNo' => $SupCardNo,
+                'CreateDate' => date('Y-m-d'),
+                'CreateTime' => date('H:i:s'),
+                'Remarks' => $get_account_data->row('Remarks'),
+            );
+            $this->db->insert('memberlostcard', $data1);
+
+            //user_logs
+            $data = array(
+                'Trans_type' => $replace_type,
+                'AccountNo' => $accountno,
+                'ReferenceNo' => addslashes($this->input->post('reason')),
+                'ReceiptNo' => $_SESSION['receipt_no'],
+                'field' => 'CardNo',
+                'value_from' => $get_account_data->row('CardNo'),
+                'value_to' => $SupCardNo,
+                'expiry_date_before' => $get_account_data->row('Expirydate'),
+                'expiry_date_after' => $get_account_data->row('Expirydate'),
+                'created_at' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                'created_by' => $_SESSION['username'],
+            );
+            $this->db->insert('user_logs', $data);
+
+            // if preissue method. need to delete initial account at member table
+            if($this->check_parameter()->row('preissue_card_method') == 1)
+            {
+                $get_rep_card = $this->db->query("SELECT * FROM member WHERE CardNo = '".$this->input->post('card_no')."'");
+                
+                $data = array(
+                    'AccountNo' => $get_rep_card->row('AccountNo'),
+                    'CardNo' => $get_rep_card->row('CardNo'),
+                    'Name' => $get_rep_card->row('Name'),
+                    'NameOnCard' => $get_rep_card->row('NameOnCard'),
+                    'Address1' => $get_rep_card->row('Address1'),
+                    'Address2' => $get_rep_card->row('Address2'),
+                    'Address3' => $get_rep_card->row('Address3'),
+                    'Address4' => $get_rep_card->row('Address4'),
+                    'City' => $get_rep_card->row('City'),
+                    'State' => $get_rep_card->row('State'),
+                    'Postcode' => $get_rep_card->row('Postcode'),
+                    'Email' => $get_rep_card->row('Email'),
+                    'Phonehome' => $get_rep_card->row('Phonehome'),
+                    'Phoneoffice' => $get_rep_card->row('Phoneoffice'),
+                    'Phonemobile' => $get_rep_card->row('Phonemobile'),
+                    'Fax' => $get_rep_card->row('Fax'),
+                    'Issuedate' => $get_rep_card->row('Issuedate'),
+                    'Expirydate' => $get_rep_card->row('Expirydate'),
+                    'Cardtype' => $get_rep_card->row('Cardtype'),
+                    'Title' => $get_rep_card->row('Title'),
+                    'ICNo' => $get_rep_card->row('ICNo'),
+                    'OldICNo' => $get_rep_card->row('OldICNo'),
+                    'Occupation' => $get_rep_card->row('Occupation'),
+                    'Employer' => $get_rep_card->row('Employer'),
+                    'Birthdate' => $get_rep_card->row('Birthdate'),
+                    'Principal' => $get_rep_card->row('Principal'),
+                    'Active' => $get_rep_card->row('Active'),
+                    'Nationality' => $get_rep_card->row('Nationality'),
+                    'LimitBF' => $get_rep_card->row('LimitBF'),
+                    'LimitAmt' => $get_rep_card->row('LimitAmt'),
+                    'LimitAmtAdj' => $get_rep_card->row('LimitAmtAdj'),
+                    'LimitAmtUsed' => $get_rep_card->row('LimitAmtUsed'),
+                    'LimitAmtBalance' => $get_rep_card->row('LimitAmtBalance'),
+                    'Status' => $get_rep_card->row('Status'),
+                    'Race' => $get_rep_card->row('Race'),
+                    'ChildrenNo' => $get_rep_card->row('ChildrenNo'),
+                    'Remarks' => $get_rep_card->row('Remarks'),
+                    'Religion' => $get_rep_card->row('Religion'),
+                    'PointsBF' => $get_rep_card->row('PointsBF'),
+                    'Points' => $get_rep_card->row('Points'),
+                    'PointsAdj' => $get_rep_card->row('PointsAdj'),
+                    'Pointsused' => $get_rep_card->row('Pointsused'),
+                    'Pointsbalance' => $get_rep_card->row('Pointsbalance'),
+                    'Income' => $get_rep_card->row('Income'),
+                    'Credit' => $get_rep_card->row('Credit'),
+                    'Gender' => $get_rep_card->row('Gender'),
+                    'PassportNo' => $get_rep_card->row('PassportNo'),
+                    'Picture' => $get_rep_card->row('Picture'),
+                    'CREATED_BY' => $get_rep_card->row('CREATED_BY'),
+                    'IssueStamp' => $get_rep_card->row('IssueStamp'),
+                    'UPDATED_BY' => $get_rep_card->row('UPDATED_BY'),
+                    'LastStamp' => $get_rep_card->row('LastStamp'),
+                    'NewForScript' => $get_rep_card->row('NewForScript'),
+                    'DiscLimitActive' => $get_rep_card->row('DiscLimitActive'),
+                    'DiscLimitBF' => $get_rep_card->row('DiscLimitBF'),
+                    'DiscLimit' => $get_rep_card->row('DiscLimit'),
+                    'DiscLimitAdj' => $get_rep_card->row('DiscLimitAdj'),
+                    'DiscLimitUsed' => $get_rep_card->row('DiscLimitUsed'),
+                    'DiscLimitBalance' => $get_rep_card->row('DiscLimitBalance'),
+                    'DiscLimitReset' => $get_rep_card->row('DiscLimitReset'),
+                    'LimitReset' => $get_rep_card->row('LimitReset'),
+                    'MemberType' => $get_rep_card->row('MemberType'),
+                    'Terms' => $get_rep_card->row('Terms'),
+                    'CreditLimit' => $get_rep_card->row('CreditLimit'),
+                    'Area' => $get_rep_card->row('Area'),
+                    'Region' => $get_rep_card->row('Region'),
+                    'comp_address' => $get_rep_card->row('comp_address'),
+                    'comp_postcode' => $get_rep_card->row('comp_postcode'),
+                    'comp_email' => $get_rep_card->row('comp_email'),
+                    'biz_nature' => $get_rep_card->row('biz_nature'),
+                    'biz_category' => $get_rep_card->row('biz_category'),
+                    'created_at' => $get_rep_card->row('created_at'),
+                    'updated_at' => $get_rep_card->row('updated_at'),
+                    'staff' => $get_rep_card->row('staff'),
+                    'rsupdate' => $get_rep_card->row('rsupdate'),
+                    'branch' => $get_rep_card->row('branch'),
+                    'referral_id' => $get_rep_card->row('referral_id'),
+                    'recruiter_id' => $get_rep_card->row('recruiter_id'),
+                    'name_first' => $get_rep_card->row('name_first'),
+                    'name_last' => $get_rep_card->row('name_last'),
+                    'replace_at' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                    'replace_by' => $_SESSION['username'],
+                    'replace_type' => $replace_type,
+                );
+                $this->db->insert('member_replaced', $data);
+                // insert replacement
+                $this->db->query("UPDATE member_replaced SET rec_new = '".$get_rep_card->row('rec_new')."', rec_edit = '".$get_rep_card->row('rec_edit')."' WHERE AccountNo = '".$get_rep_card->row('AccountNo')."' AND CardNo = '".$get_rep_card->row('CardNo')."'");
+                $this->db->query("DELETE FROM member WHERE CardNo = '".$this->input->post('card_no')."'");
+                //delete card at member table
+
+                // $data = array(
+                //     'Active' => 0
+                // );
+                // $this->db->WHERE('AccountNo',$_SESSION['account_no']);
+                // $this->db->update('member', $data);// set old card no as in active
+
+                //mem_server
+                $server = array(
+                    // 'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()), '-', '') AS uuid ")->row('uuid'),
+                    'SqlScript' => "DELETE FROM member WHERE CardNo = '".$this->input->post('card_no')."' AND AccountNo = '".$get_rep_card->row('AccountNo')."' ",
+                    // 'CreatedDateTime' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                    'CreatedBy' => 'Point.cal:web_member',
+                    // 'Status' => '0',
+                    // 'KeyField' => '',
+                );
+                // $this->db->insert('mem_server.sqlscript', $server);
+                $this->insert_sqlscript($server);
+            }
+            if($this->db->affected_rows() > 0)
+            {
+                $this->session->set_flashdata('message', '<div class="alert alert-success text-center" style="font-size: 16px">Successful <button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                
+                if($this->check_parameter()->row('preissue_card_method') == 1)
+                {
+                    redirect('Transaction_c/replace_card');
+                }
+                else
+                {
+                    /*redirect('Transaction_c/issue_sup_card?created='.$account_no);*/
+                    redirect('Transaction_c/replace_card?exist_card='.$_SESSION['card_no'].'&account='.$accountno.'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&Name='.$_SESSION['Name'].'&Passport_No='.$_SESSION['Passport_No'].'&Nationality='.$_SESSION['Nationality'].'&created='.$account_no.'&Expirydate='.$_SESSION['Expirydate']);
+                }
+            }
+            else
+            {
+                $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Failed ! !<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                redirect('Transaction_c/replace_card');
             }
     }
 
@@ -4459,14 +5177,15 @@ public function issue_sup_card()
         {
             $data = array(
 
-                'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()),'-','') as guid")->row('guid'),
+                // 'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()),'-','') as guid")->row('guid'),
                 'SqlScript' => "DELETE FROM `member` WHERE AccountNo = '".$value->AccountNo."' " ,  
-                'CreatedDateTime' => $this->db->query("SELECT NOW() as datetime")->row('datetime'),
+                // 'CreatedDateTime' => $this->db->query("SELECT NOW() as datetime")->row('datetime'),
                 'CreatedBy' => '-',
-                'Status' => '0',
-                'KeyField' => '',
+                // 'Status' => '0',
+                // 'KeyField' => '',
             );
-            $this->db->insert('mem_server.sqlscript',$data);
+            // $this->db->insert('mem_server.sqlscript',$data);
+            $this->insert_sqlscript($data);
         }
     }
 
@@ -4476,6 +5195,770 @@ public function issue_sup_card()
                     (SELECT expiry_date_in_year FROM set_parameter) YEAR AS Expirydate")->row('Expirydate');
         echo $get_preset_expiry_date;die;
        
+    }
+
+    public function upgrade_card()
+    {
+        if($this->session->userdata('loginuser')== true)
+        {
+            if(isset($_REQUEST['scan_card']))
+            {
+                $cardno = $this->input->post('card_no');
+                $reason_field = '';
+                $field = '';
+                
+                $get_data = $this->db->query("SELECT CardNo, AccountNo, ICNo, Phonemobile, Email, Nationality,Active FROM `member` WHERE CardNo = '$cardno' UNION ALL SELECT SupCardNo AS CardNo, AccountNo, ICNo, Phonemobile, Email, Nationality,Active FROM membersupcard WHERE PrincipalCardNo IN ('LOSTCARD','REPLACECARD','UPGRADECARD') AND SupCardNo = '$cardno'");
+
+                if($get_data->num_rows() == 0)
+                {
+                    $check_sup = $this->db->query("SELECT * FROM membersupcard WHERE SupCardNo = '$cardno'");
+
+                    if($check_sup->num_rows() == 0)
+                    {
+                        $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Card Not Found!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                        redirect('Transaction_c/upgrade_card');
+                    }
+                    else
+                    {
+                        $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Supcard cannot be upgraded!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                        redirect('Transaction_c/upgrade_card');
+                    }
+                }
+                else
+                {
+                    $_SESSION['card_type'] = 'primary_card';
+                    $_SESSION['update_table'] = 'member';
+                    redirect('Transaction_c/upgrade_card?exist_card='.$get_data->row('CardNo').'&account='.$get_data->row('AccountNo').'&ic_no='.$get_data->row('ICNo').'&active='.$get_data->row('Active').'&mobile_no='.$get_data->row('Phonemobile').'&email='.$get_data->row('Email').'&nationality='.$get_data->row('Nationality').'&army_no='.$get_data->row('ICNo'));
+                }
+
+                $result = 'hidden';
+
+            }
+            elseif(isset($_REQUEST['exist_card']))
+            {
+                $get_account_data = $this->db->query("SELECT * FROM ".$_SESSION['update_table']." WHERE AccountNo = '".$_REQUEST['account']."' ");
+
+                $check_lost_card = $this->db->query("SELECT LostCardNo FROM memberlostcard WHERE LostCardNo = '".$get_account_data->row('CardNo')."'");
+
+                if($check_lost_card->num_rows() > 0)
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">This Card Already Lost. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/upgrade_card');
+                }
+
+                if($get_account_data->row('acc_status') == 'TERMINATE' || $get_account_data->row('acc_status') == 'SUSPEND')
+                {
+                     $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Card Has Been '.$get_account_data->row('acc_status').'. Unable to activate.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/upgrade_card');
+                }
+
+                if($get_account_data->row('Expirydate') < date('Y-m-d'))
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Card Already Expiry !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/upgrade_card');
+                }
+
+                if($get_account_data->row('Active') == 0)
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Card is inactive!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/upgrade_card');
+                }
+
+                if($get_account_data->row('Name') != 'NEW' && $get_account_data->row('Active') == 1)
+                // if not active yet
+                {
+                    $years = '';
+                    $reason_field = 'UPGRADE';
+                    $field = 'receipt_upgrade';
+                    $button = 'Upgrade Card';
+                    $form = site_url('Transaction_c/save_upgrade');
+                }
+               
+                if($get_account_data->row('Name') == 'NEW' && $get_account_data->row('Active') == 1)
+                // if not active yet
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Cannot upgrade preissue card!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/upgrade_card');
+                }
+
+                $_SESSION['old_ic_no'] = $get_account_data->row('OldICNo');
+                $_SESSION['passport_no'] = $get_account_data->row('PassportNo');
+
+                $_SESSION['mobile_no'] = $_REQUEST['mobile_no'];
+                $_SESSION['active'] = $_REQUEST['active'];
+                $_SESSION['card_no'] = $_REQUEST['exist_card'];
+                $_SESSION['account_no'] = $_REQUEST['account'];
+                $_SESSION['ic_no'] = $_REQUEST['ic_no'];
+                $_SESSION['army_no'] = $_REQUEST['army_no'];
+                $_SESSION['email'] = $_REQUEST['email'];
+                $_SESSION['hidden_result'] = '';
+                $_SESSION['nationality'] = $_REQUEST['nationality'];
+            }
+            else
+            {  
+                $years = '';
+                $reason_field = '';
+                $field = ''; 
+                $_SESSION['old_ic_no'] = '';
+                $_SESSION['passport_no'] = '';
+
+                $_SESSION['update_table'] = 'member';
+                $button = 'Upgrade Card';
+                $form = '';
+                $_SESSION['mobile_no'] = '';
+                $_SESSION['active'] = '';
+                $_SESSION['card_no'] = '';
+                $_SESSION['account_no'] = '';
+                $_SESSION['ic_no'] = '';
+                $_SESSION['army_no'] = '';
+                $_SESSION['email'] = '';
+                $_SESSION['hidden_result'] = 'hidden';
+                $_SESSION['nationality'] = '';
+            }
+
+            $get_account_data = $this->db->query("SELECT * FROM ".$_SESSION['update_table']." WHERE AccountNo = '".$_SESSION['account_no']."' ");
+
+            if($get_account_data->row('Issuedate') == $get_account_data->row('Expirydate') && $get_account_data->row('Name') == 'NEW' || $get_account_data->row('Active') == 0 || $get_account_data->row('Expirydate') == '3000-12-31')// if new card need to activate
+            {
+                // $get_preset_expiry_date = $this->db->query("SELECT (SELECT Expirydate FROM member WHERE AccountNo = '".$_SESSION['account_no']."')+INTERVAL (SELECT expiry_date_in_year FROM set_parameter) YEAR AS Expirydate")->row('Expirydate');
+                // script with interval based on setting
+                // $get_preset_expiry_date = $this->db->query("SELECT Expirydate FROM ".$_SESSION['update_table']." WHERE AccountNo = '".$_SESSION['account_no']."'")->row('Expirydate');
+
+                // $get_preset_expiry_date = $this->db->query("SELECT (SELECT Expirydate FROM ".$_SESSION['update_table']." WHERE AccountNo = '".$_SESSION['account_no']."')+INTERVAL 
+                //     (SELECT expiry_date_in_year FROM set_parameter) YEAR AS Expirydate")->row('Expirydate');
+                // not capture currdate
+
+                $get_preset_expiry_date = $this->db->query("SELECT CURDATE()+INTERVAL 
+                    (SELECT expiry_date_in_year FROM set_parameter) YEAR AS Expirydate")->row('Expirydate');
+                
+                /*$branch = $this->db->query("SELECT DISTINCT branch_code, branch_name FROM panda_b2b.set_user AS a INNER JOIN panda_b2b.acc_branch AS b ON a.branch_guid = b.branch_guid WHERE user_id = '".$_SESSION['username']."' AND user_password = '".$_SESSION['userpass']."' AND a.isactive = '1' AND module_group_guid = '".$_SESSION['module_group_guid']."' ORDER BY branch_code ASC");*/
+                // $branch = $this->db->query("SELECT DISTINCT b.branch_code, b.branch_name, c.receipt_activate FROM panda_b2b.set_user AS a INNER JOIN panda_b2b.acc_branch AS b ON a.branch_guid = b.branch_guid INNER JOIN set_branch_parameter c ON b.branch_guid = c.branch_guid WHERE user_id = '".$_SESSION['username']."' AND user_password = '".$_SESSION['userpass']."' AND a.isactive = '1' AND module_group_guid = '".$_SESSION['module_group_guid']."' ORDER BY b.branch_code ASC");
+
+                $branch = $this->branch_with_receipt();
+            }
+            else// if card need to renew
+            {
+                $get_setting = $this->db->query("SELECT expiry_date_type from set_parameter")->row('expiry_date_type');
+                $today = $this->db->query("SELECT CURDATE() AS today ")->row('today');
+
+                if($get_setting == 1)// if setup equal to 1 new expiry date will follow the logic
+                {
+                    if($get_account_data->row('Expirydate') > $today)// if expired date more then current date
+                    {
+                        $get_preset_expiry_date = $get_account_data->row('Expirydate');
+                    }
+                    else
+                    {
+                        $get_preset_expiry_date = $today; 
+                    }
+                };
+
+                if($get_setting == 2)// if setup equal to 2 new expiry date will old expiry date format.
+                {
+                    $get_preset_expiry_date = $get_account_data->row('Expirydate');
+                };
+
+                if($get_setting == 3)// if setup equal to 3 all expiry date round up to n months.
+                {
+                    if($get_account_data->row('Expirydate') > $today && $get_account_data->row('Expirydate') != '3000-12-31')// if expired date more then current date
+                    {
+                        $date = $get_account_data->row('Expirydate');
+                    }
+                    else
+                    {
+                        $date = $today; 
+                    }
+
+                    $month = date("m", strtotime($date));
+                    $year = date("Y", strtotime($date));
+                    $month_rounder = $this->db->query("SELECT expiry_date_roundup FROM set_parameter")->row('expiry_date_roundup');
+                    $expiry_month = ceil($month/$month_rounder) * $month_rounder;
+                    $expiry_month = str_pad($expiry_month, 2, '0', STR_PAD_LEFT);
+                    $days = cal_days_in_month(CAL_GREGORIAN,$expiry_month,$year);
+                    $get_preset_expiry_date  = $year.'-'.$expiry_month.'-'.$days;
+                }
+                
+                // $branch = $this->db->query("SELECT branch as branch_code, branch as branch_name  FROM ".$_SESSION['update_table']." WHERE AccountNo = '".$_SESSION['account_no']."' ");
+                $branch = $this->branch_with_receipt();
+            }
+
+            if(isset($_REQUEST['print']))
+            {
+                $bodyload = 'printdetails()';
+                $AccountNo = $_REQUEST['AccountNo'];
+                $CardNo = $_REQUEST['CardNo'];
+            }
+            else
+            {
+                $bodyload = '';
+                $AccountNo = '';
+                $CardNo = '';
+            }
+            /*if($branch->num_rows() == 1)
+            {
+                $need_receipt_no = $this->db->query("SELECT set_receipt_no FROM set_branch_newcard where branch_code = '".$branch->row('branch_code')."' ")->row('set_receipt_no'),
+            }
+            else
+            {
+                $need_receipt_no = '';
+            }*/
+
+            $data = array(
+
+                /*'need_receipt_no' => $need_receipt_no,*/
+                'actual_expirydate' => $get_account_data->row('Expirydate'),
+                'direction' => site_url('Transaction_c/upgrade_card'),
+                'bodyload' => $bodyload,
+                'button' => $button,
+                'form' => $form,
+                'branch' => $branch,
+                'expiry_date' => $get_preset_expiry_date,
+                'remarks' => $this->db->query("SELECT * FROM ".$_SESSION['update_table']." WHERE AccountNo = '".$_SESSION['account_no']."' ")->row('Remarks'),
+
+                'select_nationality' => $this->db->query("SELECT * FROM set_nationality"),
+                'reason' => $this->db->query("SELECT * FROM set_reason where type = '".$reason_field."' "),
+                'field' => $field,
+                'years' => $years,
+                'check_receipt_itemcode' => $this->db->query("SELECT * FROM set_parameter ")->row('check_receipt_itemcode'),
+                'AccountNo' => $AccountNo,
+                'CardNo' => $CardNo,
+                'card_verify' => $this->check_parameter()->row('card_verify'),
+                'cardtype' => $get_account_data->row('Cardtype'),
+                'cardtype_list' => $this->db->query("SELECT CardType FROM cardtype"),
+                'upgrade_maintain_card' => $this->check_parameter()->row('upgrade_maintain_card'),
+                'preissue_card_method' => $this->check_parameter()->row('preissue_card_method'),
+            );
+            //echo $this->db->last_query();die;
+
+            $this->template->load('template' , 'activation', $data);
+        }
+        else
+        {
+            redirect('login_c');
+        }
+    }
+
+    public function save_upgrade()
+    {
+        if($this->session->userdata('loginuser')== true)
+        {
+            $card_no = $this->input->post('card_no');
+
+            if($this->check_parameter()->row('preissue_card_method') == '1' && $this->check_parameter()->row('upgrade_maintain_card') == '0')
+            {
+                $check_card = $this->db->query("SELECT NameOnCard FROM backend_member.member WHERE CardNo = '$card_no' AND Name = 'New' AND Issuedate = Expirydate");
+
+                if($check_card->num_rows() < 1)
+                {
+                    $this->session->set_flashdata('message_confirm', '<div class="alert alert-warning text-center" style="font-size: 16px">The New Card Must be Pre issue card!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no'));
+                }
+            }
+
+            if($this->check_parameter()->row('card_verify') == '1' && ($this->input->post('confirm_cardno') != $card_no || $this->input->post('confirm_password') != $card_no))
+            {
+                $this->session->set_flashdata('message_confirm', '<div class="alert alert-warning text-center" style="font-size: 16px">Card No. Not Match!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no'));
+            }
+            else
+            {
+                /*$need_receipt_no = $this->db->query("SELECT receipt_no_activerenew FROM `set_parameter`;")->row('receipt_no_activerenew');*/
+                $need_receipt_no = $this->db->query("SELECT receipt_upgrade FROM set_branch_parameter WHERE branch_code = '".$this->input->post('branch_hidden')."' OR branch_id = '".$this->input->post('branch_hidden')."'")->row('receipt_upgrade');
+                $check_check_receipt_itemcode = "";
+                $cardtype = $this->input->post('cardtype');
+                    if($need_receipt_no == 1)
+                    {
+                        if($this->input->post('receipt_no') == '')
+                        {
+                            ini_set('memory_limit', '-1');
+                            ini_set('max_execution_time', 0); 
+                            ini_set('memory_limit','2048M');
+
+                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Please fill in receipt no.!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
+                        };
+
+                        if(!in_array('BPRN', $_SESSION['module_code']))// if dont have authorization to by pass
+                        {
+                            $_SESSION['receipt_no'] = $this->input->post('receipt_no');
+
+                            $check_check_receipt_itemcode = $this->db->query("SELECT a.`check_receipt_itemcode` FROM set_parameter a;")->row('check_receipt_itemcode');
+
+                            //$check_receipt_setup = $this->db->query("SELECT receipt_no_amount_renew FROM `set_parameter`;")->row('receipt_no_amount_renew');
+
+                            if($check_check_receipt_itemcode == 0) //check amount (all outlets)
+                            {
+                                $check_receipt_setup = $this->db->query("SELECT receipt_no_amount_upgradecard FROM set_parameter ")->row('receipt_no_amount_upgradecard');
+                            }
+                            elseif($check_check_receipt_itemcode == 2) //check amount (based outlets)
+                            {
+                                $check_receipt_setup = $this->db->query("SELECT amount_upgrade FROM set_branch_parameter WHERE branch_code = '".$this->input->post('branch_hidden')."' ")->row('amount_upgrade');
+                            }
+                            else
+                            {
+                                $check_receipt_setup = '0';
+                            }
+
+                            // if($this->check_parameter()->row('check_receipt_itemcode') == 1)
+                            // {
+                            //     $check_receipt = $this->Trans_Model->check_receipt_no_child($this->input->post('receipt_no'));
+                            //     $check_receipt_void = $this->Trans_Model->check_receipt_void_no_child($this->input->post('receipt_no'));
+                            // }
+                            // else
+                            // {
+                            //     $check_receipt = $this->Trans_Model->check_receipt_no_main($this->input->post('receipt_no'));
+                            //     $check_receipt_void = $this->Trans_Model->check_receipt_void_no_main($this->input->post('receipt_no'));
+                            // }
+
+                            //echo $this->db->last_query();die;
+                            $check_itemcode = $this->db->query("SELECT * FROM set_itemcode WHERE name = 'upgradecard' ");
+
+                            // $check_exist_receipt = $this->db->query("SELECT * FROM frontend.posmain WHERE RefNo = '".$this->input->post('receipt_no')."'");
+
+                            $data = array(
+                                'refno' => $this->input->post('receipt_no'),
+                            );
+
+                            $result = $this->Member_Model->query_call('Transaction_c', 'save_renew', $data);
+
+                            if($result['message'] != 'success')//if not found
+                            {
+                                $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">'.$result['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
+                            }
+                            // elseif($check_receipt_void->num_rows() == 1)//if receipt void
+                            // {
+                            //     $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Receipt Already Voided !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                            //     redirect('Transaction_c/renew?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no'));
+                            // }
+                            else
+                            {
+                                $check_receipt_day = $this->db->query("SELECT check_receipt_day FROM set_parameter ")->row('check_receipt_day');
+                                $get_days = $this->db->query("SELECT TIMESTAMPDIFF(DAY, '".$result['check_receipt'][0]['BizDate']."', CURDATE()) AS day ")->row('day');
+
+                                if(($check_check_receipt_itemcode == 0 || $check_check_receipt_itemcode == 2) && $result['check_receipt'][0]['BillAmt'] < $check_receipt_setup)// if setup not check itemcode and bill amount less than tamount setup
+                                {
+                                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Receipt Amount Not Enough !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
+                                }
+                                /*elseif($check_receipt->row('BizDate') <> $this->db->query("SELECT CURDATE() AS curr_date")->row('curr_date'))*/
+                                elseif($get_days > $check_receipt_day)
+                                {
+                                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Invalid receipt date. !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
+                                }
+                                elseif($check_check_receipt_itemcode == 1)
+                                {
+                                    // $check_receipt = $this->db->query("SELECT b.* FROM frontend.posmain a INNER JOIN frontend.poschild b ON a.RefNo = b.Refno WHERE a.VoidFromRefNo = '' AND a.SalesType = 'SALES' AND a.BillStatus = '1' AND b.Refno = '".$this->input->post('receipt_no')."' AND b.itemcode = '".$check_itemcode->row('itemcode')."' ");
+                                    // if($check_receipt->num_rows() == 0)//if not found
+                                    // {
+                                    //     $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable find itemcode for renew card on this receipt no.Please make payment to proceed this transaction.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                    //     redirect('Transaction_c/renew?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no'));
+                                    // };
+
+                                    // $check_receipt->row('Qty');
+
+                                    $data = array(
+                                        'refno' => $this->input->post('receipt_no'),
+                                        'itemcode' => $check_itemcode->row('itemcode'),
+                                    );
+
+                                    $check_receipt = $this->Member_Model->query_call('Transaction_c', 'save_renew1', $data);
+
+                                    if($check_receipt['message'] == 'success')
+                                    {
+                                        if($check_receipt['message'] == 'Unable find itemcode for renew card on this receipt no.Please make payment to proceed this transaction.')
+                                        {
+                                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Unable find itemcode for upgrade card on this receipt no.Please make payment to proceed this transaction.<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                        }
+                                        else
+                                        {
+                                            $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">'.$check_receipt['message'].'<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                        }
+
+                                        redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
+                                    }
+                                }
+                            }
+
+
+                            $receipt_no = $_SESSION['receipt_no'];
+                            if($this->check_exist_receipt_no($receipt_no)->num_rows() > 0)
+                            {
+                                $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">Receipt No. Exist In Record !!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
+                            }
+                        }
+                        else
+                        {
+                            if($this->input->post('receipt_no') != '-')
+                            {
+                                $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Please use "-" for bypass receipt no.!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                                redirect('Transaction_c/upgrade_card?exist_card='.$_SESSION['card_no'].'&account='.$_SESSION['account_no'].'&ic_no='.$_SESSION['ic_no'].'&active='.$_SESSION['active'].'&mobile_no='.$_SESSION['mobile_no'].'&email='.$_SESSION['email'].'&nationality='.$_SESSION['nationality'].'&army_no='.$this->input->post('army_no').$bypass);
+                            };
+
+                            $_SESSION['receipt_no'] = $this->input->post('receipt_no');
+                        }
+                        
+                    }
+                    else
+                    {
+                        $_SESSION['receipt_no'] = '';
+                    }
+
+              
+                $expiry_date_in_year = $this->db->query('SELECT expiry_date_in_year FROM set_parameter')->row('expiry_date_in_year');
+
+                /*$get_new_expiry_date = $this->db->query("SELECT '".$this->input->post('expiry_date')."'+INTERVAL '".$this->input->post('years')."' YEAR AS Expirydate")->row('Expirydate');*/
+                $get_new_expiry_date = $this->db->query("SELECT '".$this->input->post('expiry_date')."'+INTERVAL '".$expiry_date_in_year."' YEAR AS Expirydate")->row('Expirydate');
+                //echo $this->db->last_query();die;
+                $account_no = $_SESSION['account_no'];
+                // $card_no = $_SESSION['card_no'];
+                $card_no = $this->input->post('card_no');
+
+                //ori_log
+                $ori = $this->db->query("SELECT Cardtype, Expirydate, CardNo from member where AccountNo = '$account_no' ");
+                $ori_Cardtype = $ori->row('Cardtype');
+                $ori_Expirydate = $ori->row('Expirydate');
+                $ori_CardNo = $ori->row('CardNo');
+                //ori_log
+
+                $data = array(
+                    'Cardtype' => $cardtype,
+                    'Expirydate' => addslashes($get_new_expiry_date),
+                    'Remarks' => addslashes($this->input->post('remarks')),
+                    'NewForScript' => 1,
+                    'updated_at' => $this->datetime(),
+                );
+                
+                if($_SESSION['card_type'] == 'primary_card')
+                {
+                    $get_data = $this->db->query("SELECT * FROM member WHERE accountno = '".$account_no."'");
+                    $old_expirydate = $get_data->row('Expirydate');
+
+                    $get_setting = $this->db->query("SELECT * FROM set_parameter")->row('auto_renewsupcard');
+                    $where = array(
+                            'AccountNo' => $account_no,
+                            'Active' => '1',
+                        );
+
+                    if($get_setting == 1)
+                    {
+                        $this->db->where('AccountNo', $account_no);
+                        $this->db->update('member', $data);
+
+                        if(isset($data['Cardtype']))
+                        {
+                            unset($data['Cardtype']);
+                        }
+
+                        $this->db->where($where);
+                        $this->db->update('membersupcard', $data);
+                    }
+                    else
+                    {
+                        $where['PrincipalCardNo'] = 'LOSTCARD';
+                        $this->db->where($where);
+                        $this->db->update('membersupcard', $data);
+                    }
+
+                    $upgrade_card = "UPGRADE CARD";
+                };
+
+                $date = $this->db->query("SELECT NOW() as curdate")->row('curdate');
+
+                $get_account_data = $this->db->query("
+                    SELECT Title, ICNo, Name, NameOnCard, Expirydate, CardNo,
+                    Active, OldICNo, Birthdate, Principal, Nationality, Gender, Email, Remarks, Expirydate, 
+                    'UPGRADECARD' AS card, register_online, register_date, CardNo AS OldCardNo, '' AS Relationship, Phonemobile FROM member WHERE AccountNo = '".$account_no."' AND CardNo = '".$_SESSION['card_no']."'
+                    UNION ALL
+                    SELECT b.Title, b.ICNo, b.Name, b.NameOnCard, b.Expirydate, b.SupcardNo AS CardNo,
+                    b.Active, b.OldICNo, b.Birthdate, b.Principal, b.Nationality, b.Gender, 
+                    b.Email, b.Remarks, b.Expirydate,
+                    'UPGRADECARD' AS card, b.register_online, b.register_date, IF(b.OldCardNo IS NULL OR b.OldCardNo = '', b.SupcardNo, b.OldCardNo) AS OldCardNo, b.Relationship, b.Phonemobile FROM member AS a
+                    INNER JOIN membersupcard AS b ON a.AccountNo = b.AccountNo
+                    WHERE b.AccountNo = '".$account_no."' AND b.SupCardNo = '".$_SESSION['card_no']."'
+                ");
+
+                if($this->check_parameter()->row('preissue_card_method') == '0')
+                {
+                    $account_no_new = $this->Trans_Model->generate_card_no($this->input->post('branch'));
+                    $SupCardNo = $account_no_new;
+                }
+                else
+                {
+                    $SupCardNo = addslashes($this->input->post('card_no'));
+                }
+
+                if($this->check_parameter()->row('preissue_card_method') == '0')
+                {
+                    // $get_member = $this->db->query("
+                    //         SELECT a.* FROM member AS a 
+                    //         WHERE a.accountno = '$account_no' AND a.CardNo = '".$_SESSION['card_no']."'
+                    //     ");
+
+                     $data_trans = array(
+
+                    'TRANS_GUID' => $this->guid(),
+                    'TRANS_TYPE' => 'LOST MAIN' ,
+                    'REF_NO' => addslashes($this->input->post('receipt_no')),
+                    'AccountNo' => $account_no,
+                    'CardNo' => $_SESSION['card_no'],
+                    'CardNoNew' => $account_no_new,
+                    'Name' => addslashes($this->input->post('Name')),
+                    'NameOnCard' => addslashes($this->input->post('NameOnCard')),
+                    'PhoneMobile' => addslashes($this->input->post('mobile_no')),
+                    'Issuedate' => $this->date(),
+                    'Expirydate' => addslashes($this->input->post('expiry_date')),
+                    'ICNo' => addslashes($this->input->post('ic_no')),
+                    'Active' => '1',
+                    'Remarks' => addslashes($this->input->post('remarks')),
+                    'Gender' => $get_account_data->row('Gender'),
+                    
+                    'IssueStamp' => $this->datetime(),
+                    'UPDATED_BY' => $_SESSION['username'],
+                    'UPDATED_AT' => $this->datetime(),
+                    'LastStamp' => $this->datetime(),
+                    'created_at' => $this->datetime(),
+                    'created_by' => $_SESSION['username'],
+                    'NewForScript' => '1',
+                   
+                    'branch' => $this->input->post('branch'),
+                );
+                    $this->db->insert('mem_ii_trans' , $data_trans);
+                }
+
+                if($this->check_parameter()->row('upgrade_maintain_card') == '0')
+                {
+                    $data = array(
+                        "AccountNo" => $account_no,
+                        "LostCardNo" => $get_account_data->row('CardNo'),
+                        "Name" => $get_account_data->row('Name'),
+                        "NameOnCard" => $get_account_data->row('NameOnCard'),
+                        "Title" => $get_account_data->row('Title'),
+                        "ICNo" => $get_account_data->row('ICNo'),
+                        "OldICNo" => $get_account_data->row('OldICNo'),
+                        "Nationality" => $get_account_data->row('Nationality'),
+                        "Relationship" => $get_account_data->row('Relationship'),
+                        "Birthdate" => $get_account_data->row('Birthdate'),
+                        "Gender" => $get_account_data->row('Gender'),
+                        "Principal" => $get_account_data->row('Principal'),
+                        "PhoneMobile" => $get_account_data->row('Phonemobile'),
+                        "SubstituteCardNo" => $card_no,
+                        "CreateDate" => $this->db->query("SELECT CURDATE() AS cur_date")->row('cur_date'),
+                        "CreateTime" => $this->db->query("SELECT CURTIME() AS cur_time")->row('cur_time'),
+                    );
+                    $this->db->insert('memberlostcard', $data);
+
+                    $data = array(
+                        'PrincipalCardNo' => $get_account_data->row('card'),
+                        'AccountNo' => $account_no,
+                        'Title' => $get_account_data->row('Title'),
+                        'ICNo' => addslashes($get_account_data->row('ICNo')),
+                        'SupCardNo' => $SupCardNo,
+                        'Name' => $get_account_data->row('Name'),
+                        'NameOnCard' => $get_account_data->row('NameOnCard'),
+                        'Expirydate' => $get_account_data->row('Expirydate'),
+                        'Remarks' => addslashes($this->input->post('remarks')),
+                        'PhoneMobile' => $get_account_data->row('Phonemobile'),
+                        'Active' => $get_account_data->row('Active'),
+                        'OldICNo' => $get_account_data->row('OldICNo'),
+                        'Birthdate' => $get_account_data->row('Birthdate'),
+                        'Principal' => $get_account_data->row('Principal'),
+                        'Nationality' => $this->db->query("SELECT LEFT('".$get_account_data->row('Nationality')."', 9) AS nation")->row('nation'),
+                        'Gender' => $get_account_data->row('Gender'),
+                        'email' => $get_account_data->row('Email'),
+                        'Remarks' => $get_account_data->row('Remarks'),
+                        "register_online" => $get_account_data->row('register_online'),
+                        "register_date" => $get_account_data->row('register_date'),
+                        "OldCardNo" => $get_account_data->row('OldCardNo'),
+                        // 'branch' => $get_account_data->row('branch'),
+                        'IssueStamp' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                        'LastStamp' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                        'UPDATED_BY' => $_SESSION['username'],
+                        'CREATED_BY' => $_SESSION['username'],
+                        'NewForScript' => 1,
+                    );
+                    $this->db->insert('membersupcard', $data);
+
+                    $data = array(
+                        'Trans_type' => 'UPGRADE',
+                        'AccountNo' => $_SESSION['account_no'],
+                        'ReceiptNo' => $_SESSION['receipt_no'],
+                        'field' => "CardNo",
+                        'value_from' => $_SESSION['card_no'],
+                        'value_to' => $card_no,
+                        'expiry_date_before' => $ori_Expirydate,
+                        'expiry_date_after' => $get_account_data->row('Expirydate'),
+                        'created_at' => $date,
+                        'created_by' => $_SESSION['username'],
+                        );
+                    $this->db->insert('user_logs', $data);
+                }
+
+                if($this->check_parameter()->row('preissue_card_method') == 1 && $this->check_parameter()->row('upgrade_maintain_card') == 0)
+                {
+                    $get_rep_card = $this->db->query("SELECT * FROM member WHERE CardNo = '".$this->input->post('card_no')."'");
+                    
+                    $data = array(
+                        'AccountNo' => $get_rep_card->row('AccountNo'),
+                        'CardNo' => $get_rep_card->row('CardNo'),
+                        'Name' => $get_rep_card->row('Name'),
+                        'NameOnCard' => $get_rep_card->row('NameOnCard'),
+                        'Address1' => $get_rep_card->row('Address1'),
+                        'Address2' => $get_rep_card->row('Address2'),
+                        'Address3' => $get_rep_card->row('Address3'),
+                        'Address4' => $get_rep_card->row('Address4'),
+                        'City' => $get_rep_card->row('City'),
+                        'State' => $get_rep_card->row('State'),
+                        'Postcode' => $get_rep_card->row('Postcode'),
+                        'Email' => $get_rep_card->row('Email'),
+                        'Phonehome' => $get_rep_card->row('Phonehome'),
+                        'Phoneoffice' => $get_rep_card->row('Phoneoffice'),
+                        'Phonemobile' => $get_rep_card->row('Phonemobile'),
+                        'Fax' => $get_rep_card->row('Fax'),
+                        'Issuedate' => $get_rep_card->row('Issuedate'),
+                        'Expirydate' => $get_rep_card->row('Expirydate'),
+                        'Cardtype' => $get_rep_card->row('Cardtype'),
+                        'Title' => $get_rep_card->row('Title'),
+                        'ICNo' => $get_rep_card->row('ICNo'),
+                        'OldICNo' => $get_rep_card->row('OldICNo'),
+                        'Occupation' => $get_rep_card->row('Occupation'),
+                        'Employer' => $get_rep_card->row('Employer'),
+                        'Birthdate' => $get_rep_card->row('Birthdate'),
+                        'Principal' => $get_rep_card->row('Principal'),
+                        'Active' => $get_rep_card->row('Active'),
+                        'Nationality' => $get_rep_card->row('Nationality'),
+                        'LimitBF' => $get_rep_card->row('LimitBF'),
+                        'LimitAmt' => $get_rep_card->row('LimitAmt'),
+                        'LimitAmtAdj' => $get_rep_card->row('LimitAmtAdj'),
+                        'LimitAmtUsed' => $get_rep_card->row('LimitAmtUsed'),
+                        'LimitAmtBalance' => $get_rep_card->row('LimitAmtBalance'),
+                        'Status' => $get_rep_card->row('Status'),
+                        'Race' => $get_rep_card->row('Race'),
+                        'ChildrenNo' => $get_rep_card->row('ChildrenNo'),
+                        'Remarks' => $get_rep_card->row('Remarks'),
+                        'Religion' => $get_rep_card->row('Religion'),
+                        'PointsBF' => $get_rep_card->row('PointsBF'),
+                        'Points' => $get_rep_card->row('Points'),
+                        'PointsAdj' => $get_rep_card->row('PointsAdj'),
+                        'Pointsused' => $get_rep_card->row('Pointsused'),
+                        'Pointsbalance' => $get_rep_card->row('Pointsbalance'),
+                        'Income' => $get_rep_card->row('Income'),
+                        'Credit' => $get_rep_card->row('Credit'),
+                        'Gender' => $get_rep_card->row('Gender'),
+                        'PassportNo' => $get_rep_card->row('PassportNo'),
+                        'Picture' => $get_rep_card->row('Picture'),
+                        'CREATED_BY' => $get_rep_card->row('CREATED_BY'),
+                        'IssueStamp' => $get_rep_card->row('IssueStamp'),
+                        'UPDATED_BY' => $get_rep_card->row('UPDATED_BY'),
+                        'LastStamp' => $get_rep_card->row('LastStamp'),
+                        'NewForScript' => $get_rep_card->row('NewForScript'),
+                        'DiscLimitActive' => $get_rep_card->row('DiscLimitActive'),
+                        'DiscLimitBF' => $get_rep_card->row('DiscLimitBF'),
+                        'DiscLimit' => $get_rep_card->row('DiscLimit'),
+                        'DiscLimitAdj' => $get_rep_card->row('DiscLimitAdj'),
+                        'DiscLimitUsed' => $get_rep_card->row('DiscLimitUsed'),
+                        'DiscLimitBalance' => $get_rep_card->row('DiscLimitBalance'),
+                        'DiscLimitReset' => $get_rep_card->row('DiscLimitReset'),
+                        'LimitReset' => $get_rep_card->row('LimitReset'),
+                        'MemberType' => $get_rep_card->row('MemberType'),
+                        'Terms' => $get_rep_card->row('Terms'),
+                        'CreditLimit' => $get_rep_card->row('CreditLimit'),
+                        'Area' => $get_rep_card->row('Area'),
+                        'Region' => $get_rep_card->row('Region'),
+                        'comp_address' => $get_rep_card->row('comp_address'),
+                        'comp_postcode' => $get_rep_card->row('comp_postcode'),
+                        'comp_email' => $get_rep_card->row('comp_email'),
+                        'biz_nature' => $get_rep_card->row('biz_nature'),
+                        'biz_category' => $get_rep_card->row('biz_category'),
+                        'created_at' => $get_rep_card->row('created_at'),
+                        'updated_at' => $get_rep_card->row('updated_at'),
+                        'staff' => $get_rep_card->row('staff'),
+                        'rsupdate' => $get_rep_card->row('rsupdate'),
+                        'branch' => $get_rep_card->row('branch'),
+                        'referral_id' => $get_rep_card->row('referral_id'),
+                        'recruiter_id' => $get_rep_card->row('recruiter_id'),
+                        'name_first' => $get_rep_card->row('name_first'),
+                        'name_last' => $get_rep_card->row('name_last'),
+                        'replace_at' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                        'replace_by' => $_SESSION['username'],
+                        'replace_type' => $replace_type,
+                    );
+                    $this->db->insert('member_replaced', $data);
+                    // insert replacement
+                    $this->db->query("UPDATE member_replaced SET rec_new = '".$get_rep_card->row('rec_new')."', rec_edit = '".$get_rep_card->row('rec_edit')."' WHERE AccountNo = '".$get_rep_card->row('AccountNo')."' AND CardNo = '".$get_rep_card->row('CardNo')."'");
+                    $this->db->query("DELETE FROM member WHERE CardNo = '".$this->input->post('card_no')."'");
+                    //delete card at member table
+
+                      $server = array(
+                    // 'refno' => $this->db->query("SELECT REPLACE(UPPER(UUID()), '-', '') AS uuid ")->row('uuid'),
+                    'SqlScript' => "DELETE FROM member WHERE CardNo = '".$this->input->post('card_no')."' AND AccountNo = '".$get_rep_card->row('AccountNo')."' ",
+                    // 'CreatedDateTime' => $this->db->query("SELECT NOW() as curdate")->row('curdate'),
+                    'CreatedBy' => 'Point.cal:web_member',
+                    // 'Status' => '0',
+                    // 'KeyField' => '',
+                    );
+                    // $this->db->insert('mem_server.sqlscript', $server);
+                    $this->insert_sqlscript($server);
+                }
+
+                //upd_log
+                $upd = $this->db->query("SELECT Cardtype, CardNo, Expirydate from member where AccountNo = '$account_no' ");
+                $upd_Cardtype = $upd->row('Cardtype');
+                $upd_CardNo = $upd->row('CardNo');
+                $upd_Expirydate = $upd->row('Expirydate');
+                //$upd_NewForScript = $upd->row('NewForScript');
+                //upd_log
+
+                $field = array("Cardtype", "Expirydate", "CardNo");
+
+                for ($x = 0; $x <= 2; $x++) 
+                {
+                    switch (${'ori_'.$field[$x]}) 
+                    {
+                        case ${'upd_'.$field[$x]}:
+                            break;
+                        default:
+                            $data = array(
+                                'Trans_type' => 'UPGRADE',
+                                'AccountNo' => $_SESSION['account_no'],
+                                'ReceiptNo' => $_SESSION['receipt_no'],
+                                'field' => $field[$x],
+                                'value_from' => ${'ori_'.$field[$x]},
+                                'value_to' => ${'upd_'.$field[$x]},
+                                'expiry_date_before' => addslashes($this->input->post('expiry_date')),
+                                'expiry_date_after' => addslashes($get_new_expiry_date),
+                                'created_at' => $date,
+                                'created_by' => $_SESSION['username'],
+                                );
+                            $this->db->insert('user_logs', $data);
+                    }
+                }
+
+                if($this->db->affected_rows() > 0)
+                {
+                    if($this->input->post('button') == 'edit')
+                    {
+                        redirect('Main_c/full_details?AccountNo=' .$_SESSION['account_no']);
+                    }
+                    else
+                    {
+                        $this->session->set_flashdata('message', '<div class="alert alert-success text-center" style="font-size: 16px">Successful <button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                        redirect('Transaction_c/upgrade_card');
+                    }
+                }
+                else
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">Failed ! !<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Transaction_c/upgrade_card');
+                }
+            }
+        }
+        else
+        {
+            redirect('login_c');
+        }
     }
 }
 ?>

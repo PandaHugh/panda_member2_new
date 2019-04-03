@@ -1,0 +1,1 @@
+<button style="margin-right: 15px"  type="" class="btn btn-primary pull-right"  onclick="location.href = '<?php echo site_url('main_c/full_details')?>?AccountNo=<?php echo $_SESSION['account_no']?>';" >Edit Details</button>
