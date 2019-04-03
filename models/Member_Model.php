@@ -20,7 +20,7 @@ if ( ! defined('BASEPATH')) exit('No direct script access allowed');
         if(!empty($data))
         {
             foreach ($data AS $set_data => $value) {
-                $this->db->query("SET @".$set_data." = BINARY convert('".mb_convert_encoding(addslashes($value), "GB18030")."' USING latin1)");
+                $this->db->query("SET @".$set_data." = CONVERT('".mb_convert_encoding(addslashes($value), "GB18030")."' USING latin1)");
             }
         }
 

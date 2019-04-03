@@ -130,6 +130,8 @@ class Setup_general_c extends CI_Controller {
                 'lostcard' => $this->db->query("SELECT * from set_itemcode where name = 'lostcard' "),
                 'newcard' => $this->db->query("SELECT * from set_itemcode where name = 'newcard' "),
                 'activecard' => $this->db->query("SELECT * from set_itemcode where name = 'activecard' "),
+                'replacecard' => $this->db->query("SELECT * from set_itemcode where name = 'replacecard' "),
+                'upgradecard' => $this->db->query("SELECT * FROM set_itemcode WHERE name = 'upgradecard' "),
                 'set_branch_parameter' => $this->db->query("SELECT * from set_branch_parameter ORDER BY branch_code ASC "),
                 'expiry_month' => $this->check_month($this->check_parameter()->row('point_expiry_period')),
                 );
@@ -892,6 +894,12 @@ class Setup_general_c extends CI_Controller {
         {  
             $table = $_REQUEST['table'];
 
+            $point_expiry = 0;
+            if($this->input->post('point_expiry') != '')
+            {
+                $point_expiry = $this->input->post('point_expiry');
+            }
+
             $info = array(
                 //$upd_column => $preset[$key],
                 'preissue_default_active' => $this->input->post('preissue_default_active'),
@@ -902,9 +910,15 @@ class Setup_general_c extends CI_Controller {
                 'voucher_valid_in_days' => $this->input->post('voucher_valid_in_days'),
                 'merchant_rewards_program' => $this->input->post('merchant_rewards_program'),
                 'customized_voucher_no' => $this->input->post('customized_voucher_no'),
-                'point_expiry' => $this->input->post('point_expiry'),
+                'point_expiry' => $point_expiry,
                 'card_verify' => $this->input->post('card_verify'),
             );
+
+            if($this->check_parameter()->row('point_expiry') == '1')
+            {
+                $info['point_expiry_period'] = $this->input->post('point_expiry_period');
+                $info['point_expiry_month'] = $this->input->post('point_expiry_month');
+            }
 
             $this->db->update($table, $info);
 
@@ -976,8 +990,8 @@ class Setup_general_c extends CI_Controller {
     {
         if($this->session->userdata('loginuser') == true)
         {  
-            $upd_column = array('receipt_no_supcard', 'receipt_no_lostcard', 'receipt_no_activerenew');
-            $upd_column_amt = array('receipt_no_amount_supcard', 'receipt_no_amount_lostcard', 'receipt_no_amount_activerenew');
+            $upd_column = array('receipt_no_supcard', 'receipt_no_lostcard', 'receipt_no_activerenew','receipt_no_replacecard');
+            $upd_column_amt = array('receipt_no_amount_supcard', 'receipt_no_amount_lostcard', 'receipt_no_amount_activerenew','receipt_no_amount_replace');
             $table = $_REQUEST['table'];
 
             /*if($this->input->post('receipt_no_supcard') == 'on')
@@ -1058,6 +1072,9 @@ class Setup_general_c extends CI_Controller {
                 'receipt_no_amount_supcard' => $this->input->post('receipt_no_amount_supcard'),
                 'receipt_no_amount_active' => $this->input->post('receipt_no_amount_active'),
                 'receipt_no_amount_renew' => $this->input->post('receipt_no_amount_renew'),
+                'receipt_no_amount_replace' => $this->input->post('receipt_no_amount_replace'),
+                'receipt_no_amount_upgradecard' => $this->input->post('receipt_no_amount_upgrade'),
+
             );
 
             $this->db->update('set_parameter', $info);
@@ -1077,7 +1094,9 @@ class Setup_general_c extends CI_Controller {
         if($this->session->userdata('loginuser') == true)
         {  
             $table = $_REQUEST['table'];
-            $loop_itemcode = $this->db->query("SELECT * FROM set_itemcode WHERE NAME IN('supcard', 'lostcard', 'newcard', 'activecard') ");
+
+            $loop_itemcode = $this->db->query("SELECT * FROM set_itemcode WHERE NAME IN('supcard', 'lostcard', 'newcard', 'activecard','replacecard', 'upgradecard') ");
+
 
             foreach($loop_itemcode->result() as $row => $value)
             {
@@ -1115,12 +1134,16 @@ class Setup_general_c extends CI_Controller {
             $receipt_lost = $this->input->post('receipt_lost');
             $receipt_renew = $this->input->post('receipt_renew');
             $receipt_sup = $this->input->post('receipt_sup');
+            $receipt_replace = $this->input->post('receipt_replace');
+            $receipt_upgrade = $this->input->post('receipt_upgrade');
             $branch_guid = $this->input->post('branch_guid');
             $activate_amount = $this->input->post('activate_amount');
             $lost_amount = $this->input->post('lost_amount');
             $renew_amount = $this->input->post('renew_amount');
             $sup_amount = $this->input->post('sup_amount');
-
+            $replace_amount = $this->input->post('replace_amount');
+            $upgrade_amount = $this->input->post('upgrade_amount');
+          
             foreach($branch_guid as $key => $value) 
             {   
                 $data = array(
@@ -1128,10 +1151,14 @@ class Setup_general_c extends CI_Controller {
                     'receipt_lost' => $receipt_lost[$key],
                     'receipt_renew' => $receipt_renew[$key],
                     'receipt_sup' => $receipt_sup[$key],
+                    'receipt_replace' => $receipt_replace[$key],
+                    'receipt_upgrade' => $receipt_upgrade[$key],
                     'amount_activate' => $activate_amount[$key],
                     'amount_lost' => $lost_amount[$key],
                     'amount_renew' => $renew_amount[$key],
                     'amount_sup' => $sup_amount[$key],
+                    'amount_replace' => $replace_amount[$key],
+                    'amount_upgrade' => $upgrade_amount[$key],
                 );
 
                 $this->db->where("branch_guid", $value);

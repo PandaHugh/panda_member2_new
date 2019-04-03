@@ -59,6 +59,30 @@ $(document).ready(function()
             
             <form id='save' method="post" action="<?php echo $form ?>">
               <div id="result" <?php echo $_SESSION['hidden_result']?> >
+                <?php
+                    if($button == 'Upgrade Card')
+                    {
+                  ?>
+                  <div class="form-group">
+                    <label>Card Type <a style="color:red;">*</a></label>
+                    <select class="form-control" name="cardtype">
+                      <option hidden selected value> -- Select card type -- </option>
+                      <?php
+                        foreach($cardtype_list->result() as $card_list)
+                        {
+                          if($cardtype != $card_list->CardType)
+                          {
+                      ?>
+                          <option value="<?php echo $card_list->CardType; ?>"><?php echo $card_list->CardType; ?></option>
+                      <?php
+                          }
+                        }
+                      ?>
+                    </select>
+                  </div>
+                  <?php
+                    }
+                  ?>
                 <!-- /.form-group -->
                 <div class="form-group" id="receipt_box" style="display: none;">
                   <label>Receipt No. <a style="color:red;">*</a></label>
@@ -94,7 +118,7 @@ $(document).ready(function()
                   }
                   else
                   {
-                    if($button == 'Activate')
+                    if($button == 'Activate' || $button == 'Upgrade Card')
                     { ?>
                       <select class="form-control" name="branch" id="branch" required>
 
@@ -164,6 +188,16 @@ $(document).ready(function()
                       <?php
                     }
                     ?>
+
+                    <?php
+                      if($button == 'Upgrade Card')
+                      {
+                    ?>
+                        <label>Card Type</label>
+                        <input type="text" class="form-control" value="<?php echo $cardtype; ?>" readonly>
+                    <?php
+                      }
+                    ?>
                   </div>
                 </div>
 
@@ -186,14 +220,31 @@ $(document).ready(function()
             </div>
             <!-- /.col -->
             <div id="result" class="col-md-4" <?php echo $_SESSION['hidden_result']?>>
-
               <div class="row">
-                <div class="col-md-6">
-                  <div class="form-group">
-                    <label>Card No.</label>
-                    <input type="text" class="form-control" value="<?php echo $_SESSION['card_no']?>" required readonly name="card_no">
-                  </div>
-                </div>
+                <?php
+                  if($button == 'Upgrade Card' && $upgrade_maintain_card == '0' && $preissue_card_method == '1')
+                  {
+                ?>
+                    <div class="col-md-6">
+                      <div class="form-group">
+                        <label>Card No. <a style="color:red;">*</a></label>
+                        <input type="text" class="form-control" required name="card_no" required="">
+                      </div>
+                    </div>
+                <?php
+                  }
+                  else
+                  {
+                ?>
+                    <div class="col-md-6">
+                      <div class="form-group">
+                        <label>Card No.</label>
+                        <input type="text" class="form-control" value="<?php echo $_SESSION['card_no']?>" required readonly name="card_no">
+                      </div>
+                    </div>
+                <?php
+                  }
+                ?>
                 <div class="col-md-6">
                   <div class="form-group">
                     <label>Account No.</label>
@@ -207,7 +258,7 @@ $(document).ready(function()
                 <select name="national" class="form-control"  required id="national" onchange="selectNationality(this)" 
 
                   <?php
-                  if($button == 'Renew Card')
+                  if($button == 'Renew Card' || $button == 'Upgrade Card')
                   {
                     echo 'disabled';
                   }
@@ -245,7 +296,7 @@ $(document).ready(function()
                     <input autocomplete="off" type="text" id="ic_no" class="form-control" name="ic_no" value="<?php echo $_SESSION['ic_no']?>" maxlength="12" onkeyup="checkic()" required placeholder="Ex: 880455022200"
                     
                     <?php
-                    if($button == 'Renew Card')
+                    if($button == 'Renew Card' || $button == 'Upgrade Card')
                     {
                       echo 'readonly';
                     }
@@ -256,7 +307,7 @@ $(document).ready(function()
                     <label>Army Card No. <a style="color:red;">*</a><small class="help-block">Ex: xxxxxxxx</small></label>
                     <input type="text" id="army_no" class="form-control" name="army_no" value="<?php echo $_SESSION['army_no']?>" required placeholder="Ex: xxxxxxxx"
                     <?php
-                    if($button == 'Renew Card')
+                    if($button == 'Renew Card' || $button == 'Upgrade Card')
                     {
                       echo 'readonly';
                     }
@@ -268,9 +319,9 @@ $(document).ready(function()
                     <label>Mobile No. <a style="color:red;">*</a><small class="help-block">Ex: 0112265222</small></label>
                     <input autocomplete="off" onkeypress="return isNumberKey(event)" type="text" id="mobile_no" class="form-control" value="<?php echo $_SESSION['mobile_no']?>" required placeholder="Ex: 0112265222" name="mobile_no"
                     <?php
-                    if($button == 'Renew Card')
+                    if($button == 'Renew Card' || $button == 'Upgrade Card')
                     {
-                      echo 'disabled';
+                      echo 'readonly';
                     }
                     ?>/>
                   </div>
@@ -283,7 +334,7 @@ $(document).ready(function()
                     <label>Old IC No.</label>
                     <input type="text" id="oldicno" class="form-control" name="old_ic_no" value="<?php echo $_SESSION['old_ic_no']?>"
                     <?php
-                    if($button == 'Renew Card')
+                    if($button == 'Renew Card' || $button == 'Upgrade Card')
                     {
                       echo 'readonly';
                     }
@@ -296,7 +347,7 @@ $(document).ready(function()
                     <label>Passport No. <a style="color:red;">*</a></label>
                     <input id="passno" type="text" class="form-control" value="<?php echo $_SESSION['passport_no']?>" required name="passport_no"
                     <?php
-                    if($button == 'Renew Card')
+                    if($button == 'Renew Card' || $button == 'Upgrade Card')
                     {
                       echo 'readonly';
                     }
@@ -314,9 +365,9 @@ $(document).ready(function()
                 <label>Email </label>
                 <input name="email" id="email" type="email" class="form-control" value="<?php echo $_SESSION['email']?>" 
                 <?php
-                if($button == 'Renew Card')
+                if($button == 'Renew Card' || $button == 'Upgrade Card')
                 {
-                  echo 'disabled';
+                  echo 'readonly';
                 }
                 ?> />
               </div>
@@ -653,7 +704,7 @@ $(document).ready(function()
 
     </script>
 
-    <?php if($button == 'Activate')
+    <?php if($button == 'Activate' || $button == 'Upgrade Card')
     { ?>
       <script> 
            $(document).ready(function(){  
@@ -702,7 +753,6 @@ $(document).ready(function()
                      var branch = $('#branch').val();
                      /*var field = 'receipt_activate';*/   
                      var field = "<?php echo $field; ?>";
-                    
                      if(branch != '')  
                      {  
                         $.ajax({  

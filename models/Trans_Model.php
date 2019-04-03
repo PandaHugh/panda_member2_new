@@ -82,7 +82,6 @@ class Trans_Model extends CI_Model
                     'ICNo' => 'TERMINATE',
                     'PassportNo' => 'TERMINATE',
                     'Pointsbalance' => $pointbalance,
-
                 );
                 $this->db->where('accountno',$accountno);
                 $this->db->update('member',$memberdata);

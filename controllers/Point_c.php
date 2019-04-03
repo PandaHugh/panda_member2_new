@@ -227,30 +227,7 @@ class Point_c extends CI_Controller {
             {
                 foreach ($posts->result() as $post)
                 {
-                    $check_redemption_type = $this->db->query("
-                            SELECT * FROM trans_child AS b
-                            INNER JOIN (
-                                SELECT TRANS_GUID, REF_NO FROM trans_main WHERE REF_NO = '".$post->REF_NO."'
-                            ) AS a ON a.TRANS_GUID = b.TRANS_GUID
-                            INNER JOIN mem_item AS c ON b.ITEMCODE = c.ITEM_CODE
-                            WHERE a.REF_NO = '".$post->REF_NO."' AND c.isvoucher = '1'
-                        ");
-
-                    if($check_redemption_type->num_rows() > 0)
-                    {
-                        $trans_type = $post->TRANS_TYPE;
-                    }
-                    else
-                    {
-                        $trans_type = $post->TRANS_TYPE;
-
-                        if($post->TRANS_TYPE == 'POINT_REDEEM')
-                        {
-                            $trans_type = 'ITEM_REDEEM';
-                        }
-                    }
-
-                    $nestedData['Edit'] = '<a href="'.site_url('Point_c/edit_main').'?guid='.$post->TRANS_GUID.'&column='.$trans_type.'&edit=1" title="Edit" class="btn btn-xs btn-primary"><i class="glyphicon glyphicon-pencil"></i></a> ';
+                    $nestedData['Edit'] = '<a href="'.site_url('Point_c/edit_main').'?guid='.$post->TRANS_GUID.'&column='.$post->TRANS_TYPE.'&edit=1" title="Edit" class="btn btn-xs btn-primary"><i class="glyphicon glyphicon-pencil"></i></a> ';
 
                     if($post->POSTED == '1')
                     {
@@ -493,6 +470,14 @@ class Point_c extends CI_Controller {
                     b.`email` , b.SupCardNo AS CardNo FROM member a INNER JOIN membersupcard b ON a.accountno = b.accountno WHERE $col_name2 = '$key' AND b.PrincipalCardNo IN ('SUPCARD', 'LOSTCARD') and b.Active = '1'");
             }
             //$result = $this->db->query("SELECT * FROM backend_member.member WHERE $col_name = '$key' ");
+
+            $check_lost_card = $this->db->query("SELECT LostCardNo FROM memberlostcard WHERE LostCardNo = '".$key."'");
+
+            if($check_lost_card->num_rows() > 0)
+            {
+                $this->session->set_flashdata('message', '<div class="alert alert-warning text-center" style="font-size: 16px">This Card Already Lost. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                redirect("Point_c/add_point_adj_in_out?column=".$condition."&accountno=&guid=");
+            }
             
             if($result_main->num_rows() > 0)
             {
@@ -1620,8 +1605,6 @@ class Point_c extends CI_Controller {
 
             $result = $this->db->query("SELECT * from trans_main where TRANS_GUID = '$guid' ");
             $mem_result = $this->db->query("SELECT * from member where AccountNo = '".$result->row('SUP_CODE')."' ");
-
-            $_SESSION['accountno1'] = $result->row('SUP_CODE');
             /*$VALUE_TOTAL = $this->db->query("SELECT SUM(VALUE_TOTAL) as data from trans_child where TRANS_GUID = '$guid' ")->row('data');*/
             // $branch_name = $this->db->query("SELECT DISTINCT branch_code, branch_name FROM panda_b2b.set_user AS a INNER JOIN panda_b2b.acc_branch AS b ON a.branch_guid = b.branch_guid WHERE user_id = '".$_SESSION['username']."' AND user_password = '".$_SESSION['userpass']."' AND a.isactive = '1' AND module_group_guid = '".$_SESSION['module_group_guid']."' AND branch_code = '".$result->row('branch')."' ORDER BY branch_code ASC")->row('branch_name');
 
@@ -2187,14 +2170,13 @@ class Point_c extends CI_Controller {
                 'child' => $child,
                 'text' => $text,
                 'Point_before' => number_format($main->row('point_curr') + $main->row('VALUE_TOTAL'), 2, '.', ''),
-                'Point_after' => number_format($main->row('point_curr'), 2, '.', ''),
+                'Point_after' => number_format($main->row('point_curr') + $main->row('VALUE_TOTAL'), 2, '.', ''),
                 'REMARK' => $main->row('REMARK'),
                 'sum_qty' => $this->db->query("SELECT SUM(QTY) as data from trans_child where TRANS_GUID = '$guid' ")->row('data'),
                 'sum_total' => $this->db->query("SELECT SUM(VALUE_TOTAL) as data from trans_child where TRANS_GUID = '$guid' ")->row('data'),
                 'cross_refno' => $child->row('cross_refno'),
 
                 );
-
             $report_potrait = $this->db->query("SELECT report_potrait from set_parameter ")->row('report_potrait');
 
             if($report_potrait == 1)
@@ -2754,6 +2736,15 @@ class Point_c extends CI_Controller {
             if($check_member->num_rows() > 0)
             {
                 $accountno = $check_member->row('AccountNo');
+
+                $check_lost_card = $this->db->query("SELECT LostCardNo FROM memberlostcard WHERE LostCardNo = '".$cardno."'");
+
+                if($check_lost_card->num_rows() > 0)
+                {
+                    $this->session->set_flashdata('message', '<div class="alert alert-danger text-center" style="font-size: 16px">This Card Already Lost. Process Not Allowed!!!<button type="button" class="close" data-dismiss="alert"><i class="fa fa-remove"></i></button><br></div>');
+                    redirect('Point_c/free_gift_redemption?guid='.$coupon_guid);
+                }
+
                 $check_coupon_batch_c = $this->db->query("SELECT * FROM coupon_batch_c WHERE accountno = '$accountno' AND canceled = '0' AND coupon_guid = '$coupon_guid'");
 
                 if($check_coupon_batch_c->num_rows() == 0)
@@ -3401,7 +3392,7 @@ class Point_c extends CI_Controller {
         }
 
 
-        echo 'done';die;
+        //echo 'done';die;
         
     }
 

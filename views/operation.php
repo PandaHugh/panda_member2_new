@@ -62,8 +62,10 @@ $(document).ready(function()
 
 </script>
 <!--onload Init-->
-<body onload="activate_change_box(); lost_change_box(); renew_change_box(); sup_change_box(); ">
-    <!-- upgrade_change_box(); -->
+
+<body onload="activate_change_box(); lost_change_box(); renew_change_box(); sup_change_box(); replace_change_box(); upgrade_change_box();">
+
+
     <div id="wrapper">
         <!-- /. NAV SIDE  -->
         <!--<div id="page-wrapper">-->
@@ -129,7 +131,7 @@ $(document).ready(function()
                 {
                   ?>
                   
-                <button class="btn btn-xs btn-success" type="submit" onclick="$('#formS').submit()"><i class="glyphicon glyphicon-floppy-saved"></i> Save</button>
+                <button class="btn btn-xs btn-success" type="submit"><i class="glyphicon glyphicon-floppy-saved"></i> Save</button>
                   <?php
                 }
                 ?>
@@ -175,7 +177,7 @@ $(document).ready(function()
                   <td><label data-toggle="tooltip" data-placement="top" title="Type 1: New expiry date will follow based on date of renewal card.
                     Type 2: New expiry date will follow based on current expiry date.">Member Expiry Date Type</label></td>
                   <td style="width: 80px;">
-                    <input type="number" min="1" max="2" name="expiry_date_type" class="form-control input-sm" style="border-radius: 10px;" value="<?php echo $parameter->row('expiry_date_type'); ?>"/>
+                    <input type="number" min="1" max="<?php if($parameter->row('expiry_date_roundup') == '0'){ echo '2';}else{ echo '3';} ?>" name="expiry_date_type" class="form-control input-sm" style="border-radius: 10px;" value="<?php echo $parameter->row('expiry_date_type'); ?>"/>
                   </td>
                   <td></td>
                   <td></td>
@@ -242,7 +244,7 @@ $(document).ready(function()
                   <td><label data-toggle="tooltip" data-placement="top" title="System calculate expiry point on end of month anually.
                     Example: If you choose December, System will run a calculation program for every end of December.">Cut Off Month</label></td>
                   <td style="width: 120px;">
-                    <select class="form-control">
+                    <select class="form-control" name="point_expiry_period">
                       <option selected value='<?php echo $parameter->row('point_expiry_period')?>'><?php echo $expiry_month?></option>
                       <option value='01'>Janaury</option>
                       <option value='02'>February</option>
@@ -333,7 +335,9 @@ $(document).ready(function()
                   <th>Lost Card <input type="checkbox" onClick="selectall_lost(this); printfield_lost()" id="lost" /></th>
                   <th>Renew Card <input type="checkbox" onClick="selectall_renew(this); printfield_renew()" id="renew" /></th>
                   <th>Supplementary Card <input type="checkbox" onClick="selectall_sup(this); printfield_sup()" id="sup" /></th>
-                  <!-- <th>Upgrade Card <input type="checkbox" onClick="selectall_upgrade(this); printfield_upgrade()" id="upgrade"/></th> -->
+                  <th>Replace Card <input type="checkbox" onClick="selectall_replace(this); printfield_replace()" id="replace" /></th>
+                  <th>Upgrade Card <input type="checkbox" onClick="selectall_upgrade(this); printfield_upgrade()" id="upgrade"/></th>
+
                 </tr>
 
                 <?php foreach($set_branch_parameter->result() as $row)
@@ -485,8 +489,46 @@ $(document).ready(function()
                         
                       </center>
                     </td>
-                    <!-- <td>
+                    <td>
                       <center>
+                        <!-- <input type="hidden" value="<?php echo $row->branch_guid; ?>" name="branch_guid[]" /> -->
+                        <input type="hidden" name="receipt_replace[]" 
+
+                        <?php if($row->receipt_replace == 0)
+                        {
+                        echo 'value="0"';
+                        }
+                        else
+                        {
+                          echo 'value="1"';
+                        }
+                        ?>
+                        ><input type="checkbox" name="replace[]" class="subject-list"
+
+                        <?php if($row->receipt_replace == '1')
+                        {
+                          echo "checked";
+                        }; ?> onchange="this.previousSibling.value=1-this.previousSibling.value; replace_change_box()" />
+
+                        <?php if($parameter->row('check_receipt_itemcode') == 2)
+                        { ?>
+
+                          <input type="number" name="replace_amount[]" class="input-sm" style="border-radius: 5px; width: 65px;" value="<?php echo $row->amount_replace; ?>" min="0" />
+
+                        <?php }
+                        else
+                        { ?>
+
+                          <input type="hidden" name="replace_amount[]" value="<?php echo $row->amount_replace; ?>" min="0" />
+
+                        <?php } ?>
+                        
+                      </center>
+                    </td>
+                    <td>
+
+                      <center>
+                        <!-- <input type="hidden" value="<?php echo $row->branch_guid; ?>" name="branch_guid[]" /> -->
                         <input type="hidden" name="receipt_upgrade[]" 
 
                         <?php if($row->receipt_upgrade == 0)
@@ -519,7 +561,7 @@ $(document).ready(function()
                         <?php } ?>
                         
                       </center>
-                    </td> -->
+                    </td>
                   </tr>
 
                 <?php } ?>
@@ -685,12 +727,24 @@ $(document).ready(function()
                   </td>
                   <td></td>
                 </tr>
-                <!-- <tr>
+                <tr>
+
+                  <td>Replace Card</td>
+                  <td style="width: 80px;">
+                    <input type="number" name="replacecard_ic" class="form-control input-sm" style="border-radius: 10px;" value="<?php echo $replacecard->row('itemcode'); ?>" />
+                  </td>
+                  <td>
+                    <!-- <input type="text" name="activecard_desc" class="form-control input-sm" style="border-radius: 10px;" value="<?php echo $activecard->row('description'); ?>" /> -->
+                  </td>
+                  <td></td>
+                </tr>
+                <tr>
+
                   <td>Upgrade Card</td>
                   <td style="width: 80px;">
-                    <input type="number" name="upgradecard_ic" class="form-control input-sm" style="border-radius: 10px;" value="<?php //echo $upgradecard->row('itemcode'); ?>"
+                    <input type="number" name="upgradecard_ic" class="form-control input-sm" style="border-radius: 10px;" value="<?php echo $upgradecard->row('itemcode'); ?>"
                   </td>
-                </tr> -->
+                </tr>
               </table>
               </form>
             </div>
@@ -794,12 +848,28 @@ $(document).ready(function()
                     <input type="number" name="receipt_no_amount_renew" class="form-control input-sm" style="border-radius: 10px; width: 60px;" value="<?php echo $parameter->row('receipt_no_amount_renew'); ?>" min="0" />
                   </td>
                 </tr>
-                <!-- <tr>
+                <tr>
+                  <td>Replace Card</td>
+                  <!-- <td>
+                    <input type="checkbox" name="receipt_no_activerenew" class="subject-list" 
+
+                    <?php if($parameter->row('receipt_no_replacecard') == '1')
+                    {
+                      echo "checked";
+                    }; ?> />
+                  </td> -->
+
+                  <td>
+                    <input type="number" name="receipt_no_amount_replace" class="form-control input-sm" style="border-radius: 10px; width: 60px;" value="<?php echo $parameter->row('receipt_no_amount_replace'); ?>" min="0" />
+                  </td>
+                </tr>
+                <tr>
+
                   <td>Upgrade Card</td>
                   <td>
                     <input type="number" name="receipt_no_amount_upgrade" class="form-control input-sm" style="border-radius: 10px; width: 60px;" value="<?php echo $parameter->row('receipt_no_amount_upgradecard'); ?>" min="0" />
                   </td>
-                </tr> -->
+                </tr>
               </table>
               </form>
             </div>
@@ -979,6 +1049,47 @@ $(document).ready(function()
           sup_amount[i].style.display = "inline-block";
       } else {
           sup_amount[i].style.display = "none";
+      }
+    }
+  }
+</script>
+
+<script type="text/javascript">
+  function selectall_replace(source) {
+    /*document.getElementsById('foo').value = 2;*/
+    sup = document.getElementsByName('replace[]');
+    for(var i=0, n=sup.length;i<n;i++) {
+      sup[i].checked = source.checked;
+      
+    }
+  }
+
+  function printfield_replace() {
+    /*var formSBNC = document.getElementById("formSBNC");*/
+      var checkBox = document.getElementById("replace");
+      var text = document.getElementsByName("receipt_replace[]");
+      var replace_amount = document.getElementsByName("replace_amount[]");
+      //var text = document.forms["formSBNC"].elements["receipt_activate[]"];
+      for(var i=0, n=text.length;i<n;i++) {
+        if (checkBox.checked == true){
+            text[i].value = "1";
+            replace_amount[i].style.display = "inline-block";
+        } else {
+            text[i].value = "0";
+            replace_amount[i].style.display = "none";
+        }
+      }
+  }
+
+  function replace_change_box() {
+    /*document.getElementsById('foo').value = 2;*/
+    var replace = document.getElementsByName('replace[]');
+    var replace_amount = document.getElementsByName("replace_amount[]");
+    for(var i=0, n=replace.length;i<n;i++) {
+      if (replace[i].checked == true){
+          replace_amount[i].style.display = "inline-block";
+      } else {
+          replace_amount[i].style.display = "none";
       }
     }
   }

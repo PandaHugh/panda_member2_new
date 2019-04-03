@@ -156,7 +156,17 @@ table {
               <?php
             }
             ?>
-              <!-- <li><a href="<?php echo site_url('Transaction_c/upgrade_card'); ?>">Upgrade Card</a></li> -->
+
+            <?php
+            if(in_array('RPC', $_SESSION['module_code']))
+            {
+              ?>
+              <li><a href="<?php echo site_url('Transaction_c/replace_card'); ?>">Replace Card </a></li>
+              <?php
+            }
+            ?>
+              <li><a href="<?php echo site_url('Transaction_c/upgrade_card'); ?>">Upgrade Card</a></li>
+
             
             <!-- <li><a href="#">Credit Customer</a></li> -->
             <li class="divider"></li>
@@ -611,11 +621,6 @@ table {
         startDate: '+0d'
       }
     );
-
-  $('#application_date').datepicker({
-      format: 'yyyy-mm-dd',
-      startDate: '<?php echo $Issuedate; ?>',
-    });
 
   $('#reservationtime').daterangepicker({
     timePicker: false, 
@@ -1106,7 +1111,7 @@ table {
           "destroy" : true,
           "processing": true,
           "serverSide": true,
-          "searching": false,
+          "searching": true,
           "order": [[ 5, "asc" ]],
           "ajax":{
           "url": "<?php echo site_url('Main_c/purchase_child_list_server_side?'); ?>refno=" + refno,
@@ -1140,7 +1145,7 @@ table {
           "destroy" : true,
           "processing": true,
           "serverSide": true,
-          "searching": false,
+          "searching": true,
           "order": [[ 1, "desc" ]],
           "ajax":{
           "url": "<?php echo site_url('Main_c/point_child_list_server_side?'); ?>refno=" + refno,

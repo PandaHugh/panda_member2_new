@@ -255,17 +255,6 @@ a.print {
                   }; ?>><?php if($edit != ''){ ?>
                     <option selected data-default style="display: none; "><?php echo $branch_result;?></option>
                   <?php } ?>
-                  <?php
-                    if(!isset($_REQUEST['edit']))
-                    {
-                      if(sizeof($branch) > '1')
-                      {
-                  ?>
-                        <option hidden selected value> -- Select a branch -- </option>
-                  <?php
-                      }
-                    }
-                  ?>
                     <?php foreach($branch as $row)
                     { ?>
 

@@ -753,12 +753,12 @@ class main_c extends CI_Controller {
 
             $ic = $this->db->query("SELECT REPLACE('".$result->row('ICNo')."', '-', '') AS ic ")->row('ic');
             $result1 = $this->Member_Model->query_call('Main_c', 'full_details', $data);
-            $purchase_list = $select_branch = array();
+            $select_branch = array();
 
-            if(isset($result1['purchase_list']))
-            {
-                $purchase_list = $result1['purchase_list'];
-            }
+            // if(isset($result1['purchase_list']))
+            // {
+            //     $purchase_list = $result1['purchase_list'];
+            // }
 
             if(isset($result1['select_branch']))
             {
@@ -838,7 +838,7 @@ class main_c extends CI_Controller {
                 'mem_misc' => $this->db->query("SELECT misc_guid, seq, text1, value1, text2, value2, remark, set_active, misc_group from member_miscellaneous where accountno = '".$_REQUEST['AccountNo']."'"),
                 'active_expiry' => $this->check_parameter()->row('point_expiry'),
                 'expiry_on' => $this->Point_Model->get_cut_off_point_expiry_date()['cut_off_date'],
-                'purchase_list' => $purchase_list,
+                // 'purchase_list' => $purchase_list,
                 'preissue_card_method' => $this->check_parameter()->row('preissue_card_method'),
                 );
 
@@ -993,7 +993,6 @@ class main_c extends CI_Controller {
                 $nestedData['User'] = $post['User'];
                 $nestedData['Points'] = $post['Points'];
                 $nestedData['BillAmt'] = $post['BillAmt'];
-                // $nestedData['BillStatus'] = $post['BillStatus'];
                 $nestedData['Created_By'] = $post['Created_By'];
 
                 if($post['TRANS_TYPE'] == 'SALES')
@@ -2997,9 +2996,5 @@ public function update_misc()
             redirect('login_c');
         }    
     }
-    
-
-    
-
 }
 ?>

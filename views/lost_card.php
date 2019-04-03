@@ -31,7 +31,7 @@ $(document).ready(function()
 
     <!-- Content Header (Page header) -->
     <section class="content-header">
-      <h1>Lost Card </h1>
+      <h1><?php echo $button ?></h1>
     </section>
 
     <!-- Main content -->
@@ -43,7 +43,7 @@ $(document).ready(function()
           {
               ?>
               <div class="pull-right" style="margin-right: 10px">     
-                <a href="<?php echo site_url('Transaction_c/print_card')?>?print_card&CardNo=<?php echo $_REQUEST['created']?>&redirect=Transaction_c/lost_card" title="Print Card" class="print "><i class="btn btn-primary">Print Card</i></a>
+                <a href="<?php echo site_url('Transaction_c/print_card')?>?print_card&CardNo=<?php echo $_REQUEST['created']?>&redirect=<?php echo $form1?>" title="Print Card" class="print "><i class="btn btn-primary">Print Card</i></a>
               </div>
               <?php
           }
@@ -52,7 +52,7 @@ $(document).ready(function()
         <div class="box-body">
           <div class="row">
             <div class="col-md-4">
-            <form method="post" action="<?php echo site_url('Transaction_c/lost_card'); ?>?scan_card">
+            <form method="post" action="<?php echo site_url($form1); ?>?scan_card">
               <div class="form-group">
                 <label data-toggle="tooltip" data-placement="right" title="Search cutomer detail by CardNo,ICNo,Name,PhoneNo,
                 PassportNo or Address">Search Info</label>
@@ -83,7 +83,7 @@ $(document).ready(function()
 
               <div id="result" style="<?php echo $style; ?>">
                 <!-- /.form-group -->
-                <form id='save' method="post" action="<?php echo site_url('Transaction_c/save_sup_card_lost')?>">
+                <form id='save' method="post" action="<?php echo site_url($form); ?>">
                   <div class="form-group" id="receipt_box" style="display: none;">
                     <label>Receipt No. <a style="color:red;">*</a></label>
                     <input type="text" name="receipt_no" class="form-control" placeholder="Scan Receipt No" id="receipt_no" onkeyup="bypass_receipt(this)" required>
@@ -135,6 +135,14 @@ $(document).ready(function()
                     <input type="text"  name="noto" class="form-control" value="<?php echo $_SESSION['Passport_No']?>" required readonly name="Passport_No" readonly/>
                   </div>
                 </div>
+                <?php if($button == 'Replace Card'){ ?>
+                <div class="col-md-6">
+                  <div class="form-group">
+                    <label>Expiry Date</label>
+                    <input type="text"  name="expirydate" class="form-control" value="<?php echo $_SESSION['Expirydate']?>" required readonly name="Passport_No" readonly/>
+                  </div>
+                </div>
+                <?php } ?>
                 </div>
 
                 <div class="row">

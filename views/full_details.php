@@ -327,7 +327,7 @@ $(document).ready(function()
 
                       <div class="col-md-4 form-horizontal">
                         <center><h5 style="color:blue">Personal Details</h5></center>
-                        <form class="" role="form" id="form_submit" action="<?php echo $direction?>" method="post"  onkeypress="return event.keyCode != 13;">
+                        <form class="" role="form" id="form_submit" action="<?php echo $direction?>" method="post">
                         <input type="hidden" name="AccountNo" value="<?php echo $AccountNo?>">
                         <input type="hidden" id="Nationality_new" name="Nationality_new" value="<?php echo $Nationality?>" />
                             <div class="form-group"> 
@@ -963,7 +963,7 @@ $(document).ready(function()
                             </div>
                         </div>
                         <div class="row">
-                            <div class="col-md-12" style="overflow:auto;">
+                            <div class="col-md-12">
                                 <table class="table table-bordered bill_list table-hover" id="purchase_list_server_side">
                                     <thead>
                                         <tr>
